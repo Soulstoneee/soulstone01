@@ -4,9 +4,9 @@ name: RestMode
 
 on:
   push:
-    paths: ["RestMode/**", ".github/workflows/restmode.yml"]
+    paths: ["src/**", "build.*", ".github/workflows/restmode.yml"]
   pull_request:
-    paths: ["RestMode/**", ".github/workflows/restmode.yml"]
+    paths: ["src/**", "build.*", ".github/workflows/restmode.yml"]
   workflow_dispatch:
 
 jobs:
@@ -20,10 +20,10 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Publish single-file exe
-        run: dotnet publish RestMode/src/RestMode.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o RestMode/dist
+        run: dotnet publish src/RestMode.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: RestMode-win-x64
-          path: RestMode/dist/RestMode.exe
+          path: dist/RestMode.exe
           if-no-files-found: error

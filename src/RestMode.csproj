@@ -3,7 +3,7 @@
   <!--
     RestMode - PS4-style "Rest Mode" for Windows 10/11.
     Build a single self-contained .exe: run build.cmd (or build.ps1) from the
-    RestMode folder. See README.md for the exact dotnet publish command.
+    repository folder. See README.md for the exact dotnet publish command.
   -->
 
   <PropertyGroup>

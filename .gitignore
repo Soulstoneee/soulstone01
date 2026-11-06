@@ -1,8 +1,5 @@
-node_modules
-*.log*
-.nitro
-.cache
-.output
-.env
-dist
-.netlify
+bin/
+obj/
+dist/
+*.user
+.vs/
