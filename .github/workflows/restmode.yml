@@ -1,0 +1,29 @@
+# Builds RestMode.exe on Windows and uploads it as a downloadable artifact
+# (Actions tab > latest "RestMode" run > Artifacts > RestMode-win-x64).
+name: RestMode
+
+on:
+  push:
+    paths: ["RestMode/**", ".github/workflows/restmode.yml"]
+  pull_request:
+    paths: ["RestMode/**", ".github/workflows/restmode.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish single-file exe
+        run: dotnet publish RestMode/src/RestMode.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o RestMode/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RestMode-win-x64
+          path: RestMode/dist/RestMode.exe
+          if-no-files-found: error

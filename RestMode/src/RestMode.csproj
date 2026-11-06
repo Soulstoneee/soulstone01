@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RestMode - PS4-style "Rest Mode" for Windows 10/11.
+    Build a single self-contained .exe: run build.cmd (or build.ps1) from the
+    RestMode folder. See README.md for the exact dotnet publish command.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>RestMode</AssemblyName>
+    <RootNamespace>RestMode</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>RestMode.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>1.0.0</Version>
+    <Product>RestMode</Product>
+    <Description>PS4-style Rest Mode for Windows: screen off, quiet and low power, downloads keep running.</Description>
+    <Copyright>MIT License</Copyright>
+    <!-- Lets the project also be compiled (not run) on Linux/macOS build agents. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Single-file publish settings (only used by `dotnet publish`). -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
+    <!-- Only ship English framework resources (keeps the .exe smaller). -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>embedded</DebugType>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- WinForms + COM interop are not trim-safe; never trim this app. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WMI access for the network adapter "allow the computer to turn off this device" flag. -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
