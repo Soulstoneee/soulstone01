@@ -86,13 +86,14 @@ internal static class RestOverlay
             welcome.Opacity = 0;
             _root.Children.Add(welcome);
             Sounds.Wake();
-            welcome.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, ThemeManager.Dur(0.35)));
-            line.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0, 1, ThemeManager.Dur(0.45)) { BeginTime = ThemeManager.Dur(0.15), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-            await Task.WhenAny(done.Task, Task.Delay(ThemeManager.Dur(1.85)));
+            // About 1.5 s in all: 0.3 s fade in, 0.9 s shown, 0.3 s fade out.
+            welcome.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, ThemeManager.Dur(0.3)));
+            line.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0, 1, ThemeManager.Dur(0.4)) { BeginTime = ThemeManager.Dur(0.1), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            await Task.WhenAny(done.Task, Task.Delay(ThemeManager.Dur(1.2)));
             if (!done.Task.IsCompleted)
             {
-                foreach (var w in Windows) w.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, ThemeManager.Dur(0.4)));
-                await Task.WhenAny(done.Task, Task.Delay(ThemeManager.Dur(0.42)));
+                foreach (var w in Windows) w.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, ThemeManager.Dur(0.3)));
+                await Task.WhenAny(done.Task, Task.Delay(ThemeManager.Dur(0.32)));
             }
         }
         catch (Exception ex) { Logger.Info($"Welcome screen skipped: {ex.Message}"); }

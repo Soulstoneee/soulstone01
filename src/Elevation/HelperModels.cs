@@ -16,6 +16,8 @@ public sealed class HelperRequest
     public bool SensorsOnly { get; set; }
     /// <summary>With WantActive=false: restore only the fan changes (overheat protection), keep the rest.</summary>
     public bool FansOnly { get; set; }
+    /// <summary>With WantActive=false: after restoring, delete the helper task and its Program Files copy (uninstall).</summary>
+    public bool RemoveTask { get; set; }
 }
 
 /// <summary>What the helper changed (so it can be undone, even after a crash). Owned by the helper.</summary>

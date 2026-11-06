@@ -105,7 +105,18 @@ internal static class TaskInstaller
         Logger.Info($"schtasks /delete exit {code}: {output.Trim()}");
         try
         {
-            if (Directory.Exists(SecureDir)) Directory.Delete(SecureDir, recursive: true);
+            string dir = Path.GetFullPath(SecureDir).TrimEnd('\\');
+            bool runningFromIt = Path.GetFullPath(AppPaths.ExePath).StartsWith(dir + "\\", StringComparison.OrdinalIgnoreCase);
+            if (runningFromIt)
+            {
+                // The task's own copy is running and can't delete itself: remove only this
+                // folder a few seconds after it exits.
+                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
+                    $"/c ping -n 6 127.0.0.1 >nul & rmdir /s /q \"{dir}\"")
+                { CreateNoWindow = true, UseShellExecute = false };
+                System.Diagnostics.Process.Start(psi)?.Dispose();
+            }
+            else if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
         catch (Exception ex)
         {

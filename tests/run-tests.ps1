@@ -5,6 +5,11 @@ param([string[]]$Only = @())
 try {
 function Want($n) { $Only.Count -eq 0 -or $Only -contains $n }
 $originalLid = Lid
+# If RestMode is already running, the lid is set to "Do nothing" by it: the real original is in its backup.
+$lb = Join-Path $env:LOCALAPPDATA 'RestMode\lid-backup.json'
+if (Test-Path $lb) {
+    try { $e = (Get-Content $lb -Raw | ConvertFrom-Json).Entries | Select-Object -First 1; if ($e) { $originalLid = "$($e.Ac)/$($e.Dc)" } } catch { }
+}
 Say "=== RestMode v1.0 tests - lid before: $originalLid, plan: $(ActivePlanName), power mode: $(PowerMode)"
 
 # ---------------------------------------------------------------- setup
@@ -21,13 +26,16 @@ $settings = [ordered]@{
     RestAnimation = $true; Sounds = $false; ShowNotifications = $true; FirstRunDone = $true
 }
 StopRM
+# Start from a clean crash count (earlier manual kills today would otherwise count).
+Remove-Item (Join-Path $Data 'unclean-exits.json'), (Join-Path $Data 'running.marker') -Force -ErrorAction SilentlyContinue
 $settings | ConvertTo-Json | Out-File (Join-Path $Data 'settings.json') -Encoding utf8
 
 if (Want 'helper') {
     Say "--- install the RestMode Helper task (via the dev admin task, no prompt)"
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $job = Join-Path $env:TEMP 'rm-install-helper.ps1'
-    "& '$RM' --helper install-task --data '$Data' --user-sid $sid --fan 'C:\Users\isufi\OneDrive\Desktop\FanControl_285_net_10_0\FanControl.exe'; `"exit `$LASTEXITCODE`"" | Out-File $job -Encoding utf8
+    # RestMode.exe is a windowed app: only Start-Process -Wait waits for it and gives its exit code.
+    "`$p = Start-Process '$RM' -ArgumentList '--helper','install-task','--data','`"$Data`"','--user-sid','$sid','--fan','`"C:\Users\isufi\OneDrive\Desktop\FanControl_285_net_10_0\FanControl.exe`"' -Wait -PassThru; `"exit `$(`$p.ExitCode)`"" | Out-File $job -Encoding utf8
     $o = & $Admin -File $job -TimeoutSec 120
     $null = schtasks /query /tn 'RestMode Helper' 2>$null
     Check 'helper task installed' ($LASTEXITCODE -eq 0) "$o"
@@ -37,7 +45,8 @@ if (Want 'helper') {
 Say "--- T0 startup, self-check, lid = Rest"
 $m = LogCount
 Check 'app starts' (StartRM)
-Check 'self-check ran' ([bool](LogSince $m | Select-String 'Self-check done'))
+# The self-check runs on the first start and after Windows / BIOS / driver changes; otherwise its saved result is reused.
+Check 'self-check done (now or saved)' ([bool](LogSince $m | Select-String 'Self-check done') -or (Test-Path (Join-Path $env:LOCALAPPDATA 'RestMode\selfcheck.json')))
 Start-Sleep 2
 Check 'lid set to Do nothing while RestMode runs' ((Lid) -eq '0/0') "lid=$(Lid)"
 Check 'lid backup saved first' (Test-Path (Join-Path $Data 'lid-backup.json'))
@@ -68,6 +77,7 @@ if (Want 'cycles') {
 # ---------------------------------------------------------------- T2 lid
 if (Want 'lid') {
     Say "--- T2 lid close -> Rest, lid open -> wake"
+    Start-Sleep 62   # automatic triggers wait 60 s after a wake
     $m = LogCount
     Sim 'lid-close'
     $r = WaitLog '\[INFO \] Resting\.' $m 120
@@ -161,6 +171,7 @@ if (Want 'battery') {
     Nudge
     Say "--- T6b lid closed on battery -> sleep at the limit"
     SetSettings @{ EndAction = 'Hibernate' }
+    Start-Sleep 62   # automatic triggers wait 60 s after a wake
     $m = LogCount
     Sim 'ac=off'
     Sim 'lid-close'
@@ -192,15 +203,55 @@ if (Want 'powermode') {
 # ---------------------------------------------------------------- T8 schedule
 if (Want 'schedule') {
     Say "--- T8 schedule (rest at / wake at)"
-    $t1 = (Get-Date).AddMinutes(1).ToString('HH:mm'); $t2 = (Get-Date).AddMinutes(3).ToString('HH:mm')
+    $t1 = (Get-Date).AddMinutes(2).ToString('HH:mm'); $t2 = (Get-Date).AddMinutes(4).ToString('HH:mm')
     $m = LogCount
     SetSettings @{ RestAt = $t1; WakeAt = $t2 }
-    Check 'scheduled rest' ([bool](WaitLog "Schedule: it's $t1 - entering" $m 130))
+    Check 'scheduled rest' ([bool](WaitLog "Schedule: it's $t1 - entering" $m 190))
     Check 'scheduled rest reached Resting' ([bool](WaitLog '\[INFO \] Resting\.' $m 120))
-    Check 'scheduled wake' ([bool](WaitLog "Schedule: it's $t2 - waking" $m 200))
+    Check 'scheduled wake' ([bool](WaitLog "Schedule: it's $t2 - waking" $m 260))
     SetSettings @{ RestAt = ''; WakeAt = '' }
     Start-Sleep 3
     Nudge
+}
+
+# ---------------------------------------------------------------- T11 60 s pause after waking
+if (Want 'pause') {
+    Say "--- T11 automatic triggers are ignored for 60 s after a wake; the lid is checked again afterwards"
+    $e = Enter
+    Check 'pause test entered' $e.Ok
+    $w = Wake
+    Check 'pause test woke' $w.Ok
+    $m = LogCount
+    Sim 'lid-close'
+    Check 'lid close right after waking is ignored' ([bool](WaitLog 'Not entering Rest Mode automatically \(lid closed\)' $m 15))
+    Check 'still awake during the pause' (-not (LogSince $m | Select-String '=== Entering Rest Mode'))
+    Check 'after the pause the still-closed lid enters Rest Mode' ([bool](WaitLog '\[INFO \] Resting\.' $m 100))
+    $m2 = LogCount
+    Sim 'lid-open'
+    Check 'pause test: lid open wakes' ([bool](WaitLog '\[SESSN\].*lid opened' $m2 60))
+}
+
+# ---------------------------------------------------------------- T12 crash limit
+if (Want 'crashlimit') {
+    Say "--- T12 crash limit: after 3 unexpected endings RestMode doesn't start automatically"
+    StopRM
+    $times = 1..2 | ForEach-Object { (Get-Date).ToUniversalTime().AddMinutes(-$_).ToString('o') }
+    @{ UncleanExitsUtc = $times } | ConvertTo-Json | Out-File (Join-Path $Data 'unclean-exits.json') -Encoding utf8
+    New-Item -ItemType File -Force (Join-Path $Data 'running.marker') | Out-Null
+    $m = LogCount
+    $p = Start-Process $RM -ArgumentList '--startup' -PassThru
+    $hit = WaitLog 'not starting automatically' $m 30
+    Check '3rd unexpected ending: no automatic start (message shown)' ([bool]$hit) $hit
+    Start-Sleep 2
+    Get-Process RestMode -ErrorAction SilentlyContinue | Stop-Process -Force   # closes the message box
+    $m = LogCount
+    Start-Process $RM
+    Check 'started by hand: count reset, RestMode runs' ([bool](WaitLog 'count is reset' $m 30))
+    Start-Sleep 4
+    Check 'RestMode running after manual start' (Running)
+    StopRM
+    Remove-Item (Join-Path $Data 'unclean-exits.json'), (Join-Path $Data 'running.marker') -Force -ErrorAction SilentlyContinue
+    Check 'restart for the next tests' (StartRM)
 }
 
 # ---------------------------------------------------------------- T9 crash recovery + reset script
@@ -245,6 +296,44 @@ if (Want 'exit') {
     Check 'no lid backup left' (-not (Test-Path (Join-Path $Data 'lid-backup.json')))
 }
 
+# ---------------------------------------------------------------- T13 installer + uninstall leave nothing behind
+if (Want 'install') {
+    Say "--- T13 RestMode-Setup.exe --install --quiet, then uninstall from the installed copy"
+    StopRM
+    $setupDir = Join-Path $env:TEMP 'rm-setup-test'
+    New-Item -ItemType Directory -Force $setupDir | Out-Null
+    Copy-Item $RM (Join-Path $setupDir 'RestMode-Setup.exe') -Force
+    $inst = Join-Path $env:LOCALAPPDATA 'Programs\RestMode\RestMode.exe'
+    $progs = [Environment]::GetFolderPath('Programs'); $desk = [Environment]::GetFolderPath('DesktopDirectory')
+    $p = Start-Process (Join-Path $setupDir 'RestMode-Setup.exe') -ArgumentList '--install', '--quiet' -PassThru -Wait
+    Check 'setup exit code 0' ($p.ExitCode -eq 0) "exit=$($p.ExitCode)"
+    Check 'installed exe' (Test-Path $inst)
+    Check 'Start menu: RestMode' (Test-Path (Join-Path $progs 'RestMode.lnk'))
+    Check 'Start menu: RestMode - Rest now' (Test-Path (Join-Path $progs "RestMode $([char]0x2013) Rest now.lnk"))
+    Check 'desktop shortcut' (Test-Path (Join-Path $desk "RestMode $([char]0x2013) Rest now.lnk"))
+    Check 'Apps-list entry' (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RestMode')
+    Check 'start with Windows' ([bool](Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).RestMode)
+    Check 'reset script next to the installed exe' (Test-Path (Join-Path (Split-Path $inst) 'RestMode-Reset.cmd'))
+    # Uninstall the way Settings > Apps does (UninstallString), run elevated via the test runner so the helper task can be removed without a prompt.
+    $job = Join-Path $env:TEMP 'rm-uninstall.ps1'
+    "& '$inst' --uninstall --quiet; Start-Sleep 8; 'uninstall done'" | Out-File $job -Encoding utf8
+    $o = & $Admin -File $job -TimeoutSec 180
+    Start-Sleep 4
+    Check 'uninstall: installed exe removed' (-not (Test-Path $inst)) "$o"
+    Check 'uninstall: install folder removed' (-not (Test-Path (Split-Path $inst)))
+    Check 'uninstall: Start menu entries removed' (-not (Test-Path (Join-Path $progs 'RestMode.lnk')) -and -not (Test-Path (Join-Path $progs "RestMode $([char]0x2013) Rest now.lnk")))
+    Check 'uninstall: desktop shortcut removed' (-not (Test-Path (Join-Path $desk "RestMode $([char]0x2013) Rest now.lnk")))
+    Check 'uninstall: Apps-list entry removed' (-not (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RestMode'))
+    Check 'uninstall: autostart removed' (-not (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).RestMode)
+    $null = schtasks /query /tn 'RestMode Helper' 2>$null
+    Check 'uninstall: RestMode Helper task removed' ($LASTEXITCODE -ne 0)
+    Check 'uninstall: helper copy in Program Files removed' (-not (Test-Path (Join-Path $env:ProgramFiles 'RestMode Helper')))
+    Check 'uninstall: data folder removed' (-not (Test-Path $Data))
+    Check 'uninstall: no RestMode plan left' ((TempPlans) -eq 0)
+    Check 'uninstall: lid as before' ((Lid) -eq $originalLid) "lid=$(Lid)"
+    Check 'uninstall: plan Balanced' ((ActivePlanName) -eq 'Balanced') (ActivePlanName)
+    Remove-Item $setupDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 # ---------------------------------------------------------------- results
 $script:Results | Export-Csv "$Out\results.csv" -NoTypeInformation -Encoding utf8
 $fail = @($script:Results | Where-Object Result -eq 'FAIL')

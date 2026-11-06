@@ -34,7 +34,8 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item dist/RestMode.exe dist/RestMode-Setup.exe
-          & dist/RestMode.exe --write-reset-script dist
+          # RestMode.exe is a windowed app: PowerShell only waits for it with Start-Process -Wait.
+          Start-Process dist/RestMode.exe -ArgumentList '--write-reset-script', (Resolve-Path dist).Path -Wait
           if (-not (Test-Path dist/RestMode-Reset.cmd)) { throw "RestMode-Reset.cmd was not written" }
           Get-ChildItem dist | Format-Table Name, Length
 

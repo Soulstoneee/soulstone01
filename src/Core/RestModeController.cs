@@ -129,7 +129,7 @@ internal sealed class RestModeController : IDisposable
         catch (Exception ex) { Logger.Error("Self-check failed (skipped)", ex); }
 
         ApplyLidSetting();
-        ResetScript.WriteTo(AppPaths.DataDir);
+        ResetScript.WriteTo(AppPaths.DataDir, AppPaths.ExePath);
         if (Installer.RunningInstalledCopy) ResetScript.WriteTo(Installer.InstallDir);
         StartPendingWatch();
         _watchdog.Start();

@@ -188,6 +188,22 @@ internal static class HelperClient
     {
         if (!TaskInstaller.IsInstalled()) return true;
         if (IsElevated) return TaskInstaller.Remove();
+
+        // Ask the (elevated) task to restore and remove itself: no admin prompt needed.
+        var req = new HelperRequest { Id = Guid.NewGuid().ToString("N"), WantActive = false, RemoveTask = true };
+        try
+        {
+            JsonFile.Write(AppPaths.HelperRequestFile, req);
+            if (TaskInstaller.RunNow())
+            {
+                var r = await WaitForResultAsync(req.Id, TimeSpan.FromSeconds(30));
+                for (int i = 0; i < 10 && TaskInstaller.IsInstalled(); i++) await Task.Delay(300);
+                if (!TaskInstaller.IsInstalled()) return true;
+                Logger.Warn($"The helper task could not remove itself ({(r == null ? "no answer" : "failed")}) - asking for admin.");
+            }
+        }
+        catch (Exception ex) { Logger.Warn($"Removing the helper task through itself failed: {ex.Message}"); }
+
         return await RunElevatedAsync($"--helper remove-task --data {Quote(AppPaths.DataDir)}", TimeSpan.FromSeconds(120)) == 0;
     }
 

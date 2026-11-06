@@ -195,6 +195,14 @@ internal static class HelperMain
             }
         }
 
+        // Uninstall: the task removes itself, so uninstalling needs no admin prompt.
+        if (req.RemoveTask && !req.WantActive)
+        {
+            bool removed = TaskInstaller.Remove();
+            log.Add(removed ? "RestMode Helper task removed." : "Could not remove the RestMode Helper task.");
+            ok &= removed;
+        }
+
         foreach (var line in log) Logger.Info("  " + line);
         WriteResult(req.Id, ok, log);
     }

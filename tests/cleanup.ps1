@@ -6,7 +6,8 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
     Where-Object { $_.CommandLine -match 'run-tests\.ps1' -and $_.ProcessId -ne $PID } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Get-Process curl -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-if (Test-Path $Exe) { & $Exe --restore --quiet | Out-Null; Start-Sleep 5 }
+# After the uninstall test the data folder is gone on purpose: then there is nothing to restore.
+if ((Test-Path $Exe) -and (Test-Path $data)) { & $Exe --restore --quiet | Out-Null; Start-Sleep 5 }
 Get-Process RestMode -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 foreach ($f in 'testmode.flag', 'testmode-nosleep.flag', 'simulate.txt') {
     Remove-Item (Join-Path $data $f) -Force -ErrorAction SilentlyContinue

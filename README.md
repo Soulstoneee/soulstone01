@@ -53,11 +53,11 @@ a filled moon while resting.
 3. The fans get quieter (see [Fans](#fans)) - never to 0 %.
 4. The network adapter you're using stays fully powered.
 5. The sound is muted; optionally chosen apps are slowed down or paused.
-6. A short animation ("Entering Rest Mode…") and the screen turns off. The PC stays fully on.
+6. On the main monitor a glowing orange neon frame draws itself around the screen, "Resting…" fades in and out (about 3.5 s, other monitors black; it can be switched off or recoloured), then the screen turns off. The PC stays fully on.
 7. RestMode watches downloads. When traffic stays low for 10 minutes it does what you chose: **Sleep**, **Hibernate**, **Shut down** or **Stay** in Rest Mode. You can also tell it to watch only certain apps (e.g. `steam`, `qbittorrent`).
 
 When you wake it, everything is put back - power plan, power mode, fan mode,
-network option, volume, apps - and "Welcome back" fades in.
+network option, volume, apps - and a short "Welcome back" screen shows how long it rested and how much was downloaded (any key or click closes it).
 
 ## Laptops: closing the lid
 
@@ -192,7 +192,7 @@ You need Windows 10/11 and the free [.NET 8 SDK](https://dotnet.microsoft.com/do
 
 - [docs/TESTED-ON.md](docs/TESTED-ON.md) - what was tested, on which PC, and what wasn't.
 - [docs/FINAL-REPORT.md](docs/FINAL-REPORT.md) - the v1.0 test run.
-- [docs/DESKTOP-TEST-CHECKLIST.md](docs/DESKTOP-TEST-CHECKLIST.md) - a 30-minute checklist for a desktop PC.
+- [docs/DESKTOP-TEST-CHECKLIST.md](docs/DESKTOP-TEST-CHECKLIST.md) - a 40-minute checklist for a desktop PC.
 - [docs/TEST-CHECKLIST.md](docs/TEST-CHECKLIST.md) - the full manual checklist.
 - `tests/` - the automated test run used on the test laptop.
 

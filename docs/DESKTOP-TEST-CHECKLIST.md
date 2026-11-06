@@ -1,83 +1,85 @@
-# Test on a desktop PC
+# Test RestMode v1.0 on a desktop PC
 
-RestMode was developed and tested on one laptop (see
-[TESTED-ON.md](TESTED-ON.md)). Desktops behave differently in a few
-important ways. Run this list once on a desktop and tick each box. It takes
-about 30 minutes.
+RestMode was built and tested on one laptop (see [TESTED-ON.md](TESTED-ON.md)
+and [FINAL-REPORT.md](FINAL-REPORT.md)). Desktops are the main target and
+behave differently in a few ways, so run this list once on a desktop. It
+takes about 40 minutes. Tick each box.
 
-All results are also in the log: tray icon > **View log**
-(`%LOCALAPPDATA%\RestMode\restmode.log`).
+Everything RestMode does is in its log: tray icon › **View log**
+(`%LOCALAPPDATA%\RestMode\restmode.log`). Lines with `[WARN ]` or `PROBLEM` matter most.
 
 ## Before you start
 
-- [ ] Write down your active power plan: run `powercfg /getactivescheme` → ______________
-- [ ] Run `powercfg /a` and note the first line under "available": **Standby (S3)** or **Standby (S0 Low Power Idle)** → ______________
-- [ ] Settings > Power & battery (Windows 11) or Power & sleep (Windows 10): note the **Power mode** → ______________
-- [ ] Optional safety net: create a restore point (Start > "Create a restore point" > Create).
-- [ ] Start `RestMode.exe` (no install needed). In Settings > **Downloads**, set the minutes to **2**.
+- [ ] Write down your active power plan: `powercfg /getactivescheme` → ______________
+- [ ] Run `powercfg /a`. Note whether **Standby (S3)** or **Standby (S0 Low Power Idle)** is available → ______________
+- [ ] Settings › System › Power: note **Power mode** → ______________ and "turn off screen / sleep after" → ______________
+- [ ] Optional safety net: Start › "Create a restore point" › Create.
+- [ ] Run **RestMode-Setup.exe** (or the portable RestMode.exe). Go through the first-start guide.
 
-## 1. Detection (Settings > Power, and the first lines of the log)
+## 1. Detection
 
-- [ ] The Power tab says **desktop** (or "desktop (on a UPS)" if you have a UPS), the right CPU (Intel / AMD), the sleep type from `powercfg /a`, your monitor count, and your network (wired / Wi-Fi).
-- [ ] The lid and battery options are **greyed out**.
-- [ ] Log line `plan: writing plugged-in (AC) only - no battery values`.
+- [ ] The guide (and Settings › Power) says **desktop** (or "desktop (on a UPS)"), the right CPU (Intel / AMD), the sleep type you noted, the right number of monitors, and your network (wired / Wi-Fi).
+- [ ] The guide doesn't ask about a lid. Settings › Safety has no battery section.
+- [ ] The log has `plan: writing plugged-in (AC) only - no battery values` after your first Rest.
 
-## 2. Enter and wake (S3 desktops: the most common case)
+## 2. Rest and wake (S3 desktops: the most common case)
 
-- [ ] Press `Ctrl+Alt+Shift+R`. **All monitors** go dark within ~2 s (S3 PCs) or ~15 s (Modern Standby PCs).
-- [ ] The tray icon turns orange (check after waking).
-- [ ] Wake with the **mouse**: all monitors come back; the tray icon is blue.
-- [ ] Repeat, waking with a **key**, and (if you have one) a **controller button**.
-- [ ] `powercfg /getactivescheme` shows your plan again and `powercfg /list` has no "RestMode (temporary)".
-- [ ] Log ends with `Checked: the PC stayed fully running for the whole session` and a `SESSN` line.
+- [ ] Click **Rest** in the main window. On the main monitor an orange neon frame draws itself around the screen, "Resting…" fades in and out, then all monitors go dark (about 4 s). Other monitors are black during the animation.
+- [ ] Move the mouse: the **Welcome back** screen shows how long you rested and how much was downloaded, then disappears by itself (or press a key to close it at once).
+- [ ] Repeat with the **hotkey** (`Ctrl+Alt+Shift+R`), the **tray icon › Rest**, and Start › **RestMode – Rest now**. Wake with a **key**, and with a **controller button** if you have one.
+- [ ] After each wake: `powercfg /getactivescheme` shows your plan, `powercfg /list` has no "RestMode (temporary)", the volume is as before.
+- [ ] Settings › Rest & lid: turn the **Rest animation** and **Welcome back screen** off, Rest again: the screen goes dark straight away and there's no welcome screen on wake. Turn them back on, try **White** and **Custom** frame colors with **Preview**.
 
-## 3. Multiple monitors (if you have 2+)
+## 3. Several monitors (if you have 2+)
 
-- [ ] On entry, **every** monitor turns off (not just the main one).
-- [ ] On wake, every monitor comes back, windows are where they were.
-- [ ] Monitors connected by DisplayPort sometimes "disconnect" when off: after waking, check that windows didn't all jump to one screen. Note it here: ______________
+- [ ] Every monitor turns off; every monitor comes back on wake.
+- [ ] After waking, windows are still on the monitors they were on. (Some DisplayPort monitors "disconnect" when off - note if windows jumped: ______________)
 
-## 4. Network stays on (wired Ethernet)
+## 4. Downloads keep going (wired Ethernet)
 
-- [ ] Start a big download (a Steam game/update, or a large file in a browser).
-- [ ] Enter Rest Mode and wait **10 minutes**.
-- [ ] Wake: the download kept going (progress moved on, no "network error").
-- [ ] If "Keep the connected network adapter fully powered" is on: one UAC prompt appeared **before** the screen went off (or none, if the adapter has no such option - the log then says "nothing to change").
-- [ ] Device Manager > your Ethernet adapter > Power Management: after waking, *Allow the computer to turn off this device* is back to what it was.
+- [ ] Start a big download (Steam game / update or a large file), Rest for **10 minutes**, wake: the download kept going.
+- [ ] If "Keep the network adapter powered" is on: one admin prompt appeared **before** the screen went dark - or none if your adapter has no such option (the log then says "nothing to change").
+- [ ] Device Manager › your Ethernet adapter › Power Management: after waking, *Allow the computer to turn off this device* is back to what it was.
 
 ## 5. Downloads finished → sleep
 
-- [ ] Settings > Downloads: 50 KB/s, 2 minutes, then **Sleep**.
-- [ ] Start a download, enter Rest Mode. The PC does **not** sleep while it downloads.
-- [ ] ~2-3 minutes after it finishes, the PC sleeps.
-- [ ] Wake it (power button / keyboard): your plan, volume and power mode are back.
+- [ ] Settings › Downloads: below 50 KB/s, for **2** minutes, then **Sleep**.
+- [ ] Start a download, Rest. The PC doesn't sleep while it downloads; 2-3 minutes after it ends it sleeps.
+- [ ] Wake it: your plan, power mode and volume are back.
+- [ ] Optional: Settings › Downloads › *Watch chosen apps*: `steam`. Rest Mode now ends when Steam stops downloading, even if other traffic continues.
 
-## 6. Fans (desktops have several fans and no laptop fan modes)
+## 6. Fans (desktops have several fans and no built-in laptop fan modes)
 
-- [ ] Settings > Fans > **Detect built-in fan modes**: says no built-in modes (normal for desktops), or names your board's brand as "not supported yet".
-- [ ] Without Fan Control: "On this PC, Rest Mode will use: Windows power mode". Enter Rest Mode, wake: Settings > Power mode is back to what you wrote down.
+- [ ] Settings › Fans › **Detect now**: says no built-in modes (normal for desktops), or names your board's brand as "not supported yet".
+- [ ] Without Fan Control: "Rest Mode will use: Windows power mode". Rest, wake: Settings › Power mode is back to what you noted.
 - [ ] With Fan Control installed **and running**:
-  - [ ] In Fan Control, save two configs: **Normal** (your usual) and **Quiet**: every fan at least 20-30 %, never 0 % / stop, a curve that reaches 100 % by ~70-75 °C on CPU **and** GPU temperature.
-  - [ ] Settings > Fans: Detect finds FanControl.exe, no runtime warning, both configs appear in the dropdowns.
-  - [ ] **Test** button: fans audibly slow down for ~10 s, then return.
-  - [ ] Enter Rest Mode (approve the prompt): fans slow down within a minute. Wake: they return to normal.
-- [ ] With Fan Control installed but **closed**: entering Rest Mode does not start it (log: "Fan Control is not running - fan profile not changed").
+  - [ ] In Fan Control, save two configs: **Normal** (your usual) and **Quiet** (every fan at least 20-30 %, never 0 % / fan stop, a curve reaching 100 % by about 70-75 °C on CPU **and** GPU).
+  - [ ] Settings › Fans: *Detect* finds FanControl.exe, ".NET runtime: OK", both configs are in the lists.
+  - [ ] **Run test**: the fans slow down for about 10 s, then return.
+  - [ ] Rest (approve the prompt, or install the helper task on the Safety page first): the fans slow down within a minute. Wake: they return.
+- [ ] With Fan Control **closed**: Rest doesn't start it (log: "Fan Control is not running - fan profile not changed").
 
-## 7. Admin vs standard account (optional, needs a second account)
+## 7. Safety
 
-- [ ] Sign in with a **standard** (non-admin) account and run RestMode: the Admin tab explains admin steps are skipped; entering Rest Mode shows **no** password prompt and everything else works.
+- [ ] Settings › Safety › **Read now** shows a CPU temperature (and a GPU temperature with an NVIDIA card). If it says "No sensor works", Rest Mode should keep the fans on their normal profile (log line "No temperature sensor works").
+- [ ] Rest for 10 minutes; the log has a `Sensors:` line every 5 minutes with sensible temperatures.
+- [ ] Watchdog: while resting, switch the power plan from another PC session or tool if you can (or skip). Within 30 s the log says "another program switched the power plan - switching back".
 
-## 8. Crash recovery
+## 8. Crash recovery and the crash limit
 
-- [ ] In Command Prompt: `timeout /t 60 && taskkill /f /im RestMode.exe`, then enter Rest Mode within 60 s.
-- [ ] After it's killed, wake the screen and start RestMode again: a notification says settings were restored; your plan and power mode are back.
+- [ ] Command Prompt: `timeout /t 60 && taskkill /f /im RestMode.exe`, then Rest within 60 s. After it's killed, wake the screen and start RestMode again: a notification says settings were restored; your plan is back.
+- [ ] (Optional) Kill RestMode three times in a row the same way, then sign out and in: RestMode does **not** start by itself and shows a message instead. Starting it from the Start menu works again.
+- [ ] Double-click `%LOCALAPPDATA%\RestMode\RestMode-Reset.cmd`: it reports that everything was restored.
 
-## 9. Install / uninstall (optional)
+## 9. Standard account (optional, needs a second Windows account)
 
-- [ ] Settings > General > **Install for this user**: RestMode appears in the Start menu and in Settings > Apps.
-- [ ] Uninstall from Settings > Apps: everything is restored and removed, including the installed exe.
+- [ ] Sign in with a **standard** (non-admin) account and run RestMode: Settings › Safety explains admin steps are skipped; Rest shows **no** password prompt and everything else works.
+
+## 10. Install / uninstall
+
+- [ ] RestMode-Setup.exe added Start menu entries "RestMode" and "RestMode – Rest now", the desktop shortcut (if ticked) and the Settings › Apps entry.
+- [ ] Settings › Apps › RestMode › **Uninstall**: everything is restored and removed - Start menu entries, desktop shortcut, autostart, the helper task, `%LOCALAPPDATA%\Programs\RestMode` and `%LOCALAPPDATA%\RestMode`.
 
 ## Send back
 
-The log file (`%LOCALAPPDATA%\RestMode\restmode.log`) and anything you noted
-above. Lines with `[WARN ]` or `PROBLEM` are the most useful.
+The log file and anything you noted above.

@@ -9,12 +9,19 @@ internal static class ResetScript
 {
     public const string FileName = "RestMode-Reset.cmd";
 
-    public static void WriteTo(string folder)
+    /// <param name="exePath">The RestMode.exe that writes the script. Lets a portable copy be found
+    /// when no exe is next to the script and none is installed.</param>
+    public static void WriteTo(string folder, string? exePath = null)
     {
         try
         {
             Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, FileName), Content, System.Text.Encoding.ASCII);
+            // Only plain-ASCII paths fit the ASCII .cmd file; % is doubled so cmd keeps it.
+            string extra = exePath != null && exePath.All(c => c >= 32 && c < 127 && c != '"')
+                ? $"if not exist \"%RM%\" set \"RM={exePath.Replace("%", "%%")}\""
+                : "rem (no portable copy)";
+            string text = Content.Replace("rem {portable}", extra).Replace("\r\n", "\n").Replace("\n", "\r\n");
+            File.WriteAllText(Path.Combine(folder, FileName), text, System.Text.Encoding.ASCII);
         }
         catch (Exception ex) { Logger.Warn($"Could not write {FileName}: {ex.Message}"); }
     }
@@ -29,6 +36,7 @@ echo RestMode reset: putting your normal settings back...
 taskkill /im RestMode.exe /f >nul 2>&1
 set "RM=%~dp0RestMode.exe"
 if not exist "%RM%" set "RM=%LOCALAPPDATA%\Programs\RestMode\RestMode.exe"
+rem {portable}
 if exist "%RM%" (
   "%RM%" --restore --quiet
   echo Done. RestMode restored everything it had changed.
