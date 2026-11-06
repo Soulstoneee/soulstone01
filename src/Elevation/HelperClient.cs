@@ -38,6 +38,8 @@ internal static class HelperClient
             Fan = work.FanExe != null,
             FanQuietConfig = work.FanQuiet.Length > 0 ? work.FanQuiet : s.FanQuietConfig,
             FanNormalConfig = work.FanNormal.Length > 0 ? work.FanNormal : s.FanNormalConfig,
+            SensorsOnly = work.SensorsOnly,
+            FansOnly = work.FansOnly,
         };
         try { JsonFile.Write(AppPaths.HelperRequestFile, req); }
         catch (Exception ex) { Logger.Error("Could not write helper request", ex); return null; }
@@ -89,6 +91,24 @@ internal static class HelperClient
             Logger.Error("Admin helper failed", ex);
             return null;
         }
+    }
+
+    /// <summary>True when admin work can run silently (RestMode elevated, or the helper task installed).</summary>
+    public static bool CanRunSilently => IsElevated || TaskInstaller.IsInstalled();
+
+    /// <summary>Vendor sensors via the helper - only when that needs no prompt. Null otherwise.</summary>
+    public static async Task<Core.Safety.SensorReading?> ReadVendorSensorsAsync(string providerId, AppSettings s)
+    {
+        if (!CanRunSilently) return null;
+        var r = await RunAsync(false, new HelperWork { BuiltInId = providerId, SensorsOnly = true }, s, allowPrompt: false);
+        return r?.Sensors;
+    }
+
+    /// <summary>Overheat protection: put the fans back to normal, keep everything else in Rest Mode.</summary>
+    public static Task<HelperResult?> RestoreFansAsync(AppSettings s, bool allowPrompt)
+    {
+        var w = HelperWork.ForRestore(s);
+        return RunAsync(false, new HelperWork { FanExe = w.FanExe, FanNormal = w.FanNormal, FansOnly = true }, s, allowPrompt);
     }
 
     /// <summary>Settings "Test" button: Fan Control to Quiet for 10 seconds, then back to Normal.</summary>

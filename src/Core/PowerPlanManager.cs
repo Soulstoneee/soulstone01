@@ -71,22 +71,25 @@ internal static class PowerPlanManager
 
         uint cpuMax = (uint)s.CpuMaxPercent;
         uint cpuMin = (uint)Math.Min(s.CpuMinPercent, s.CpuMaxPercent);
+        // On battery (DC values) a stricter cap: 10 points lower, at least 5 %.
+        uint cpuMaxDc = s.StricterOnBattery ? (uint)Math.Max(5, s.CpuMaxPercent - 10) : cpuMax;
+        uint cpuMinDc = Math.Min(cpuMin, cpuMaxDc);
 
         Logger.Info($"  plan: writing {(_writeDc ? "plugged-in and battery" : "plugged-in (AC) only - no battery")} values; {dev.CpuText} CPU.");
 
         // Processor: capped, no turbo, prefer efficiency, passive cooling (throttle before fans spin up).
         // These setting GUIDs are the same on Intel, AMD and ARM; any one a CPU/BIOS doesn't offer is skipped.
         // ("E-cores" variants only exist on Intel hybrid CPUs.)
-        CpuLimitApplied = Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMax, cpuMax, cpuMax, "Maximum processor state", optional: true);
+        CpuLimitApplied = Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMax, cpuMax, cpuMaxDc, "Maximum processor state", optional: true);
         if (!CpuLimitApplied)
             Logger.Warn("  plan: this device does not allow limiting the processor speed - CPU limit skipped (the rest of Rest Mode still works).");
         if (dev.Cpu == CpuVendor.Intel)
         {
-            Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMax1, cpuMax, cpuMax, "Maximum processor state (E-cores)", optional: true);
-            Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMin1, cpuMin, cpuMin, "Minimum processor state (E-cores)", optional: true);
+            Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMax1, cpuMax, cpuMaxDc, "Maximum processor state (E-cores)", optional: true);
+            Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMin1, cpuMin, cpuMinDc, "Minimum processor state (E-cores)", optional: true);
             Write(temp, PowerGuids.SubProcessor, PowerGuids.PerfEpp1, 100, 100, "Energy performance preference (E-cores)", optional: true);
         }
-        Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMin, cpuMin, cpuMin, "Minimum processor state", optional: true);
+        Write(temp, PowerGuids.SubProcessor, PowerGuids.ProcThrottleMin, cpuMin, cpuMinDc, "Minimum processor state", optional: true);
         // Boost off: Intel Turbo Boost / AMD Precision Boost. Same setting for both vendors.
         Write(temp, PowerGuids.SubProcessor, PowerGuids.PerfBoostMode, 0, 0, "Processor performance boost mode = Disabled", optional: true);
         Write(temp, PowerGuids.SubProcessor, PowerGuids.PerfEpp, 100, 100, "Energy performance preference = max savings", optional: true);
@@ -121,11 +124,12 @@ internal static class PowerPlanManager
         // Wi-Fi radio at full power so downloads are not slowed down by power saving.
         Write(temp, PowerGuids.SubWireless, PowerGuids.WirelessPowerSaving, 0, 0, "Wireless adapter = Maximum Performance", optional: true);
 
-        // Lid: only devices that have one. Otherwise the user's own lid setting (copied from their plan) applies.
-        if (caps.LidPresent && s.AllowLidClosed)
-            Write(temp, PowerGuids.SubButtons, PowerGuids.LidAction, 0, 0, "Lid close action = Do nothing", optional: true);
+        // Lid: only devices that have one. "Rest" / "Do nothing": closing the lid keeps resting (RestMode
+        // reacts to the lid itself). "Sleep": the user's own lid setting (copied from their plan) applies.
+        if (caps.LidPresent && s.LidAction != LidBehavior.Sleep)
+            Write(temp, PowerGuids.SubButtons, PowerGuids.LidAction, 0, 0, "Lid close action = Do nothing (RestMode handles the lid)", optional: true);
         else if (caps.LidPresent)
-            Logger.Info("  plan: lid close action left as in your plan (closing the lid ends Rest Mode as usual).");
+            Logger.Info("  plan: lid close action left as in your plan (closing the lid sleeps as usual).");
 
         return temp;
     }

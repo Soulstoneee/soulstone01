@@ -9,6 +9,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- WPF for the windows, WinForms only for the tray icon and the hidden message window. -->
+    <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -18,6 +20,7 @@
     <ApplicationIcon>RestMode.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
     <Product>RestMode</Product>
     <Description>PS4-style Rest Mode for Windows: screen off, quiet and low power, downloads keep running.</Description>
     <Copyright>MIT License</Copyright>
@@ -30,14 +33,30 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <DebugType>embedded</DebugType>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <!-- WinForms + COM interop are not trim-safe; never trim this app. -->
+    <!-- WinForms/WPF + COM interop are not trim-safe; never trim this app. -->
     <PublishTrimmed>false</PublishTrimmed>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- WMI access for the network adapter "allow the computer to turn off this device" flag. -->
+    <!-- WPF and WinForms share many type names (Application, Button, Color...): no global WinForms usings;
+         files that use WinForms say so explicitly. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WMI access for the network adapter "allow the computer to turn off this device" flag and vendor fan modes. -->
     <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Bundled fonts (SIL Open Font License, see Assets/Fonts/OFL-*.txt) and the theme file. -->
+    <Resource Include="Assets\Fonts\*.ttf" />
+    <Page Remove="UI\Wpf\Theme.xaml" />
+    <EmbeddedResource Include="UI\Wpf\Theme.xaml" LogicalName="RestMode.Theme.xaml" />
+    <Resource Include="RestMode.ico" />
   </ItemGroup>
 
 </Project>

@@ -1,3 +1,4 @@
+using System.Windows.Forms;
 namespace RestMode.Util;
 
 /// <summary>
@@ -12,6 +13,8 @@ internal sealed class SingleInstance : IDisposable
     public const string RestoreEvent = @"Local\RestMode.Restore";
     public const string ShowEvent = @"Local\RestMode.Show";
     public const string ExitEvent = @"Local\RestMode.Exit";
+    public const string SimulateEvent = @"Local\RestMode.Simulate";
+    public const string WakeEvent = @"Local\RestMode.Wake";
 
     private readonly List<(EventWaitHandle ev, RegisteredWaitHandle reg)> _waits = new();
 

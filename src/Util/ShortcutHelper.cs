@@ -6,15 +6,25 @@ namespace RestMode.Util;
 internal static class ShortcutHelper
 {
     public static string DesktopShortcutPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "RestMode – Rest now.lnk");
+
+    /// <summary>The v0.x desktop shortcut name, removed on uninstall too.</summary>
+    public static string OldDesktopShortcutPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Enter Rest Mode.lnk");
 
     public static string StartMenuShortcutPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.Programs), "RestMode.lnk");
 
-    /// <summary>"Enter Rest Mode" desktop shortcut (RestMode.exe --enter).</summary>
+    public static string StartMenuRestShortcutPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Programs), "RestMode – Rest now.lnk");
+
+    /// <summary>"Rest now" desktop shortcut (RestMode.exe --enter).</summary>
     public static bool CreateDesktopShortcut(string? exe = null) =>
-        Create(DesktopShortcutPath, exe ?? AppPaths.ExePath, "--enter", "Put the PC into PS4-style Rest Mode",
-            Path.Combine(Environment.SystemDirectory, "shell32.dll") + ",27"); // power icon
+        Create(DesktopShortcutPath, exe ?? AppPaths.ExePath, "--enter", "Put the PC into Rest Mode now", (exe ?? AppPaths.ExePath) + ",0");
+
+    /// <summary>Start menu "RestMode – Rest now" (RestMode.exe --enter).</summary>
+    public static bool CreateStartMenuRestShortcut(string? exe = null) =>
+        Create(StartMenuRestShortcutPath, exe ?? AppPaths.ExePath, "--enter", "Put the PC into Rest Mode now", (exe ?? AppPaths.ExePath) + ",0");
 
     /// <summary>Start menu entry that starts RestMode in the tray.</summary>
     public static bool CreateStartMenuShortcut(string exe) =>
@@ -51,9 +61,17 @@ internal static class ShortcutHelper
         }
     }
 
-    public static void RemoveDesktopShortcut() => Delete(DesktopShortcutPath);
+    public static void RemoveDesktopShortcut()
+    {
+        Delete(DesktopShortcutPath);
+        Delete(OldDesktopShortcutPath);
+    }
 
-    public static void RemoveStartMenuShortcut() => Delete(StartMenuShortcutPath);
+    public static void RemoveStartMenuShortcut()
+    {
+        Delete(StartMenuShortcutPath);
+        Delete(StartMenuRestShortcutPath);
+    }
 
     private static void Delete(string path)
     {

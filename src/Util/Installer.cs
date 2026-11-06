@@ -34,7 +34,7 @@ internal static class Installer
     }
 
     /// <summary>Copies the running exe into place and registers it. Returns an error message, or null on success.</summary>
-    public static string? Install()
+    public static string? Install(bool desktopShortcut = true, bool startWithWindows = true)
     {
         try
         {
@@ -47,8 +47,10 @@ internal static class Installer
                 File.Copy(src, InstalledExe, overwrite: true);
 
             ShortcutHelper.CreateStartMenuShortcut(InstalledExe);
-            if (File.Exists(ShortcutHelper.DesktopShortcutPath)) ShortcutHelper.CreateDesktopShortcut(InstalledExe);
-            if (StartupManager.IsEnabled()) StartupManager.SetEnabled(true, InstalledExe);
+            ShortcutHelper.CreateStartMenuRestShortcut(InstalledExe);
+            if (desktopShortcut || File.Exists(ShortcutHelper.DesktopShortcutPath)) ShortcutHelper.CreateDesktopShortcut(InstalledExe);
+            StartupManager.SetEnabled(startWithWindows, InstalledExe);
+            ResetScript.WriteTo(InstallDir);
 
             using (var k = Registry.CurrentUser.CreateSubKey(UninstallKey))
             {
@@ -91,7 +93,7 @@ internal static class Installer
         if (!RunningInstalledCopy) return false;
         try
         {
-            string cmd = $"/c ping 127.0.0.1 -n 5 >nul & del /f /q \"{InstalledExe}\" & rmdir \"{InstallDir}\"";
+            string cmd = $"/c ping 127.0.0.1 -n 5 >nul & del /f /q \"{InstalledExe}\" & del /f /q \"{Path.Combine(InstallDir, ResetScript.FileName)}\" & rmdir \"{InstallDir}\"";
             Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"), cmd)
             { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetTempPath() });
             return true;

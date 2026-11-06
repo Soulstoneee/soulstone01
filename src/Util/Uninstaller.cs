@@ -1,13 +1,14 @@
+using System.Windows.Forms;
 using RestMode.Core;
 using RestMode.Elevation;
 
 namespace RestMode.Util;
 
 /// <summary>
-/// `RestMode.exe --restore` and `RestMode.exe --uninstall`.
+/// `RestMode.exe --restore` and `RestMode.exe --uninstall` (both accept --quiet).
 /// Both put every setting back. Uninstall also removes what RestMode added
-/// to Windows (autostart entry, desktop shortcut, helper task) and optionally
-/// its settings/log folder. RestMode has no installer: after this, delete the exe.
+/// to Windows (autostart entry, shortcuts, Apps-list entry, helper task, lid
+/// setting) and its settings/log folder (asked first unless --quiet).
 /// </summary>
 internal static class Uninstaller
 {
@@ -17,44 +18,49 @@ internal static class Uninstaller
         Restorer.RestoreLocal(StateStore.Load());
         PowerPlanManager.CleanupOrphans();
         if (HelperClient.HasPendingRestore())
-            await HelperClient.SyncAsync(false, SettingsStore.Current, allowPrompt: true);
+            await HelperClient.SyncAsync(false, SettingsStore.Current, allowPrompt: !quiet || HelperClient.CanRunSilently);
 
         if (!quiet)
         {
             string msg = HelperClient.HasPendingRestore()
-                ? "Power plan, volume and apps are restored.\n\nNetwork adapter / Fan Control settings still need admin approval: run \"RestMode.exe --restore\" again and accept the prompt."
+                ? "Power plan, volume and apps are restored.\n\nNetwork adapter / fan settings still need admin approval: run \"RestMode.exe --restore\" again and accept the prompt."
                 : "All settings are back to normal.";
             MessageBox.Show(msg, "RestMode", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 
-    public static async Task UninstallAsync()
+    public static async Task UninstallAsync(bool quiet)
     {
-        var answer = MessageBox.Show(
-            "Remove RestMode from this PC?\n\nThis restores your power plan, fan mode and all other settings, and removes the autostart entry, the shortcuts, the Apps-list entry and the admin helper task.",
-            "Uninstall RestMode", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        if (answer != DialogResult.Yes) return;
+        if (!quiet)
+        {
+            var answer = MessageBox.Show(
+                "Remove RestMode from this PC?\n\nThis restores your power plan, lid setting, power mode, fan mode and all other settings, and removes the autostart entry, the shortcuts, the Apps-list entry and the admin helper task.",
+                "Uninstall RestMode", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes) return;
+        }
 
         await RestoreAllAsync(quiet: true);
+        LidManager.RestoreAll();
         StartupManager.SetEnabled(false);
         ShortcutHelper.RemoveDesktopShortcut();
         Installer.RemoveRegistration();
-        bool taskRemoved = await HelperClient.RemoveTaskAsync();
+        bool taskRemoved = !TaskInstaller.IsInstalled() || await HelperClient.RemoveTaskAsync();
 
-        bool pending = HelperClient.HasPendingRestore();
-        if (!pending &&
-            MessageBox.Show("Also delete RestMode's settings and log files?\n" + AppPaths.DataDir, "Uninstall RestMode",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+        bool pending = HelperClient.HasPendingRestore() || LidManager.HasBackup;
+        bool deleteData = !pending && (quiet ||
+            MessageBox.Show("Also delete RestMode's settings, statistics, backups and logs?\n" + AppPaths.DataDir, "Uninstall RestMode",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes);
+        if (deleteData)
         {
             Logger.Init(Path.Combine(Path.GetTempPath(), "restmode-uninstall.log"));
             try { Directory.Delete(AppPaths.DataDir, recursive: true); } catch { /* best effort */ }
         }
 
-        string done = Installer.ScheduleSelfDelete()
-            ? "RestMode has been removed."
-            : "RestMode has been removed. You can now delete RestMode.exe.";
+        bool selfDelete = Installer.ScheduleSelfDelete();
+        if (quiet) return;
+        string done = selfDelete ? "RestMode has been removed." : "RestMode has been removed. You can now delete RestMode.exe.";
         if (!taskRemoved) done += "\n\nThe \"RestMode Helper\" scheduled task could not be removed; delete it in Task Scheduler.";
-        if (pending) done += "\n\nNetwork adapter / Fan Control settings were NOT restored (admin approval declined). Run \"RestMode.exe --restore\" before deleting the exe.";
+        if (pending) done += "\n\nSome settings were NOT restored yet (admin approval declined). Run \"RestMode.exe --restore\" or RestMode-Reset.cmd before deleting the exe.";
         MessageBox.Show(done, "RestMode", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 }

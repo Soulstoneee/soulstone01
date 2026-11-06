@@ -49,5 +49,7 @@ internal static class PowerGuids
 
     // Power setting notifications
     public static readonly Guid ConsoleDisplayState = new("6fe69556-704a-47a0-8f24-c28d936fda47"); // 0 off, 1 on, 2 dimmed
-    public static readonly Guid AcDcPowerSource = new("5d3e9a59-e9d5-4b00-a6bd-ff34ff516548");
+    public static readonly Guid AcDcPowerSource = new("5d3e9a59-e9d5-4b00-a6bd-ff34ff516548"); // 0 AC, 1 battery, 2 UPS
+    public static readonly Guid LidSwitchStateChange = new("ba3e0f4d-b817-4094-a2d1-d56379e6a0f3"); // 0 closed, 1 open
+    public static readonly Guid PowerSchemePersonality = new("245d8541-3943-4422-b025-13a784f679b7"); // active plan changed
 }

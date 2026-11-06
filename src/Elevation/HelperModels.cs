@@ -12,6 +12,10 @@ public sealed class HelperRequest
     public bool Fan { get; set; }
     public string FanQuietConfig { get; set; } = "";
     public string FanNormalConfig { get; set; } = "";
+    /// <summary>Only read the built-in plug-in's sensors (temperatures / fan RPM); change nothing.</summary>
+    public bool SensorsOnly { get; set; }
+    /// <summary>With WantActive=false: restore only the fan changes (overheat protection), keep the rest.</summary>
+    public bool FansOnly { get; set; }
 }
 
 /// <summary>What the helper changed (so it can be undone, even after a crash). Owned by the helper.</summary>
@@ -41,6 +45,7 @@ public sealed class HelperResult
     public string Id { get; set; } = "";
     public bool Success { get; set; }
     public List<string> Messages { get; set; } = new();
+    public Core.Safety.SensorReading? Sensors { get; set; }
 }
 
 /// <summary>The admin-only work for one Rest Mode session (built by the non-admin app).</summary>
@@ -52,6 +57,9 @@ internal sealed class HelperWork
     public string? FanExe { get; init; }
     public string FanQuiet { get; init; } = "";
     public string FanNormal { get; init; } = "";
+
+    public bool SensorsOnly { get; init; }
+    public bool FansOnly { get; init; }
 
     public bool Any => Adapters || BuiltInId != null || FanExe != null;
 

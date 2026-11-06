@@ -29,15 +29,20 @@ internal sealed class FanPlan
 /// </summary>
 internal static class FanPlanner
 {
-    public static FanPlan Resolve(AppSettings s, DeviceProfile dev)
+    /// <param name="sensorsAvailable">false = no temperature sensor works: quiet profiles are not used (safety).</param>
+    public static FanPlan Resolve(AppSettings s, DeviceProfile dev, bool sensorsAvailable = true)
     {
         var notes = new List<string>();
         if (s.FanMode == FanStrategy.Off)
             return new FanPlan { Notes = { "Fan switching is off in Settings." } };
 
+        bool allowQuiet = sensorsAvailable || !s.OverheatProtection;
+        if (!allowQuiet)
+            notes.Add("No temperature sensor works on this PC, so the fans are kept on their normal profile for safety (only the CPU limit and the Windows power mode are used).");
+
         // --- built-in manufacturer modes
         IBuiltInFanModes? builtIn = null;
-        bool wantBuiltIn = s.FanMode is FanStrategy.Auto or FanStrategy.BuiltIn;
+        bool wantBuiltIn = allowQuiet && s.FeatureEnabled("builtin-fan") && s.FanMode is FanStrategy.Auto or FanStrategy.BuiltIn;
         if (wantBuiltIn && s.UseBuiltInFanModes)
         {
             var (p, msg) = BuiltInFanModes.Detect();
@@ -57,7 +62,8 @@ internal static class FanPlanner
 
         // --- Fan Control
         string? fanExe = null;
-        bool wantFanControl = s.FanMode == FanStrategy.FanControl || (s.FanMode == FanStrategy.Auto && builtIn == null);
+        bool wantFanControl = allowQuiet && s.FeatureEnabled("fancontrol") &&
+                              (s.FanMode == FanStrategy.FanControl || (s.FanMode == FanStrategy.Auto && builtIn == null));
         if (wantFanControl)
         {
             string? exe = FanControlSwitcher.NormalizeExe(s.FanControlExe) ?? (string.IsNullOrWhiteSpace(s.FanControlExe) ? FanControlSwitcher.Detect() : null);
@@ -76,7 +82,8 @@ internal static class FanPlanner
         }
 
         // --- Windows power mode (no admin needed, works on any PC)
-        bool windows = s.FanMode == FanStrategy.WindowsPowerMode || (s.FanMode == FanStrategy.Auto && builtIn == null && fanExe == null);
+        bool windows = s.FeatureEnabled("powermode") &&
+                       (s.FanMode == FanStrategy.WindowsPowerMode || (s.FanMode == FanStrategy.Auto && builtIn == null && fanExe == null));
 
         if (s.FanMode == FanStrategy.BuiltIn && builtIn == null) notes.Add("No usable built-in fan modes - fans are left as they are.");
         if (s.FanMode == FanStrategy.FanControl && fanExe == null) notes.Add("Fan Control can't be used - fans are left as they are.");

@@ -185,6 +185,14 @@ internal static class NativeMethods
         ref Guid subGroupOfPowerSettingsGuid, ref Guid powerSettingGuid, uint acValueIndex);
 
     [DllImport("powrprof.dll")]
+    public static extern uint PowerReadACValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid,
+        ref Guid subGroupOfPowerSettingsGuid, ref Guid powerSettingGuid, out uint acValueIndex);
+
+    [DllImport("powrprof.dll")]
+    public static extern uint PowerReadDCValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid,
+        ref Guid subGroupOfPowerSettingsGuid, ref Guid powerSettingGuid, out uint dcValueIndex);
+
+    [DllImport("powrprof.dll")]
     public static extern uint PowerWriteDCValueIndex(IntPtr rootPowerKey, ref Guid schemeGuid,
         ref Guid subGroupOfPowerSettingsGuid, ref Guid powerSettingGuid, uint dcValueIndex);
 
@@ -300,6 +308,20 @@ internal static class NativeMethods
     public static extern uint PdhCloseQuery(IntPtr query);
 
     public const uint PDH_FMT_DOUBLE = 0x00000200;
+    public const uint PDH_MORE_DATA = 0x800007D2;
+
+    [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
+    public static extern uint PdhGetFormattedCounterArrayW(IntPtr counter, uint format, ref uint bufferSize, ref uint itemCount, IntPtr itemBuffer);
+
+    // ------------------------------------------------------------------ waitable timer (scheduled wake)
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern IntPtr CreateWaitableTimerW(IntPtr attributes, bool manualReset, string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetWaitableTimer(IntPtr timer, ref long dueTime, int period, IntPtr completionRoutine, IntPtr arg, bool resume);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool CancelWaitableTimer(IntPtr timer);
 
     [StructLayout(LayoutKind.Explicit)]
     public struct PDH_FMT_COUNTERVALUE
@@ -311,4 +333,12 @@ internal static class NativeMethods
     // ------------------------------------------------------------------ misc
     [DllImport("user32.dll")]
     public static extern bool DestroyIcon(IntPtr handle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+    public static readonly IntPtr HWND_TOPMOST = new(-1);
+    public const uint SWP_SHOWWINDOW = 0x0040;
+
+    public const ushort XINPUT_DPAD_UP = 0x0001, XINPUT_DPAD_DOWN = 0x0002, XINPUT_DPAD_LEFT = 0x0004, XINPUT_DPAD_RIGHT = 0x0008,
+        XINPUT_A = 0x1000, XINPUT_B = 0x2000;
 }

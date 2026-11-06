@@ -1,3 +1,5 @@
+using System.Drawing;
+using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using RestMode.Core;
 using RestMode.Util;
@@ -14,11 +16,16 @@ namespace RestMode.UI;
 /// </summary>
 internal sealed class HiddenWindow : Form
 {
-    private IntPtr _displayNotify;
+    private readonly List<IntPtr> _notify = new();
 
     public event Action<int>? HotkeyPressed;
     public event Action<int>? PowerBroadcast;
     public event Action<int>? DisplayStateChanged;
+    /// <summary>0 = lid closed, 1 = open. Windows sends the current state right after registering.</summary>
+    public event Action<int>? LidChanged;
+    /// <summary>0 = plugged in, 1 = battery, 2 = UPS.</summary>
+    public event Action<int>? PowerSourceChanged;
+    public event Action? ActivePlanChanged;
     public event Action? SessionEnding;
 
     public HiddenWindow()
@@ -38,14 +45,18 @@ internal sealed class HiddenWindow : Form
     public void Init()
     {
         CreateHandle();
-        try
+        foreach (var guid in new[] { PowerGuids.ConsoleDisplayState, PowerGuids.LidSwitchStateChange, PowerGuids.AcDcPowerSource, PowerGuids.PowerSchemePersonality })
         {
-            var g = PowerGuids.ConsoleDisplayState;
-            _displayNotify = RegisterPowerSettingNotification(Handle, ref g, 0 /* DEVICE_NOTIFY_WINDOW_HANDLE */);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Display-state notifications unavailable: {ex.Message}");
+            try
+            {
+                var g = guid;
+                IntPtr h = RegisterPowerSettingNotification(Handle, ref g, 0 /* DEVICE_NOTIFY_WINDOW_HANDLE */);
+                if (h != IntPtr.Zero) _notify.Add(h);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Power notification {guid} unavailable: {ex.Message}");
+            }
         }
     }
 
@@ -66,6 +77,12 @@ internal sealed class HiddenWindow : Form
                     var setting = Marshal.PtrToStructure<POWERBROADCAST_SETTING>(m.LParam);
                     if (setting.PowerSetting == PowerGuids.ConsoleDisplayState)
                         DisplayStateChanged?.Invoke(setting.Data);
+                    else if (setting.PowerSetting == PowerGuids.LidSwitchStateChange)
+                        LidChanged?.Invoke(setting.Data);
+                    else if (setting.PowerSetting == PowerGuids.AcDcPowerSource)
+                        PowerSourceChanged?.Invoke(setting.Data);
+                    else if (setting.PowerSetting == PowerGuids.PowerSchemePersonality)
+                        ActivePlanChanged?.Invoke();
                 }
                 else
                 {
@@ -88,11 +105,11 @@ internal sealed class HiddenWindow : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (_displayNotify != IntPtr.Zero)
+        foreach (var h in _notify)
         {
-            try { UnregisterPowerSettingNotification(_displayNotify); } catch { /* ignore */ }
-            _displayNotify = IntPtr.Zero;
+            try { UnregisterPowerSettingNotification(h); } catch { /* ignore */ }
         }
+        _notify.Clear();
         base.Dispose(disposing);
     }
 }

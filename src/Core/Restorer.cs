@@ -1,3 +1,4 @@
+using System.Windows.Forms;
 using RestMode.Util;
 using static RestMode.Native.NativeMethods;
 

@@ -1,5 +1,7 @@
+using System.Windows.Forms;
 using RestMode.Elevation;
 using RestMode.UI;
+using RestMode.UI.Wpf;
 using RestMode.Util;
 
 namespace RestMode;
@@ -17,82 +19,97 @@ internal static class Program
 
         try { AppPaths.EnsureDataDir(); } catch { /* logging just won't work */ }
         Logger.Init(AppPaths.LogFile);
-        ApplicationConfiguration.Initialize();
+        System.Windows.Forms.Application.EnableVisualStyles();
+        System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
 
-        if (cmd.Install) return RunInstall();
+        // Test runs only: hand a --simulate command to the running copy.
+        if (cmd.Simulate != null)
+        {
+            if (!File.Exists(AppPaths.TestModeFlag)) return 2;
+            File.WriteAllText(AppPaths.SimulateFile, cmd.Simulate);
+            return SingleInstance.Signal(SingleInstance.SimulateEvent) ? 0 : 1;
+        }
+
+        // Silent install (scripts / tests): RestMode-Setup.exe --install --quiet
+        if (cmd.Install && cmd.Quiet)
+            return Installer.Install() == null ? 0 : 1;
+
+        bool setupMode = cmd.Install ||
+                         (Path.GetFileNameWithoutExtension(AppPaths.ExePath).Contains("setup", StringComparison.OrdinalIgnoreCase) && !Installer.RunningInstalledCopy && !cmd.Uninstall && !cmd.Restore);
 
         using var mutex = new Mutex(false, SingleInstance.MutexName);
-        bool owned = TryAcquire(mutex, 0);
-        if (!owned)
+        bool owned = false;
+        if (!setupMode)
         {
-            if (cmd.Uninstall)
+            owned = TryAcquire(mutex, 0);
+            if (!owned)
             {
-                // Ask the running copy to wake/restore and quit, then continue.
-                SingleInstance.Signal(SingleInstance.ExitEvent);
-                owned = TryAcquire(mutex, 20_000);
-                if (!owned)
+                if (cmd.Uninstall || cmd.Restore)
                 {
-                    MessageBox.Show("Please close RestMode (tray icon > Exit) and try again.", "RestMode");
-                    return 1;
+                    // Ask the running copy to wake/restore and quit, then continue.
+                    SingleInstance.Signal(SingleInstance.ExitEvent);
+                    owned = TryAcquire(mutex, 20_000);
+                    if (!owned)
+                    {
+                        if (!cmd.Quiet) MessageBox.Show("Please close RestMode (tray icon > Exit) and try again.", "RestMode");
+                        return 1;
+                    }
                 }
-            }
-            else
-            {
-                // Hand the request to the running copy.
-                SingleInstance.Signal(cmd.Enter ? SingleInstance.EnterEvent
-                    : cmd.Restore ? SingleInstance.RestoreEvent
-                    : SingleInstance.ShowEvent);
-                return 0;
+                else
+                {
+                    // Hand the request to the running copy.
+                    SingleInstance.Signal(cmd.Enter ? SingleInstance.EnterEvent
+                        : cmd.Wake ? SingleInstance.WakeEvent
+                        : SingleInstance.ShowEvent);
+                    return 0;
+                }
             }
         }
 
         try
         {
-            if (cmd.Uninstall) { Uninstaller.UninstallAsync().GetAwaiter().GetResult(); return 0; }
-            if (cmd.Restore) { Uninstaller.RestoreAllAsync(quiet: false).GetAwaiter().GetResult(); return 0; }
+            if (cmd.Uninstall) { Uninstaller.UninstallAsync(cmd.Quiet).GetAwaiter().GetResult(); return 0; }
+            if (cmd.Restore)
+            {
+                Uninstaller.RestoreAllAsync(cmd.Quiet).GetAwaiter().GetResult();
+                try { Core.LidManager.RestoreAll(); } catch { /* best effort */ }
+                return 0;
+            }
 
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+            ThemeManager.Init();
+
+            // Developer / test tools (test-mode flag file required).
+            if (File.Exists(AppPaths.TestModeFlag))
+            {
+                int i = Array.FindIndex(args, a => a.Equals("--render-ui", StringComparison.OrdinalIgnoreCase));
+                if (i >= 0 && i + 1 < args.Length) return DevTools.RenderUi(args[i + 1]);
+                i = Array.FindIndex(args, a => a.Equals("--render-icon", StringComparison.OrdinalIgnoreCase));
+                if (i >= 0 && i + 1 < args.Length) return DevTools.RenderIcon(args[i + 1]);
+            }
+
+            if (setupMode)
+            {
+                var setup = new SetupWindow();
+                setup.Closed += (_, _) => app.Shutdown();
+                setup.Show();
+                app.Run();
+                return 0;
+            }
+
+            System.Windows.Forms.Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             AppDomain.CurrentDomain.UnhandledException += (_, e) => TrayApp.OnProcessCrash(e.ExceptionObject as Exception);
 
-            using var app = new TrayApp(cmd);
-            Application.ThreadException += (_, e) => app.OnFatal(e.Exception);
-            Application.Run(app);
+            var tray = new TrayApp(cmd);
+            app.DispatcherUnhandledException += (_, e) => { tray.OnFatal(e.Exception); e.Handled = true; };
+            System.Windows.Forms.Application.ThreadException += (_, e) => tray.OnFatal(e.Exception);
+            app.Run();
             return 0;
         }
         finally
         {
             if (owned) mutex.ReleaseMutex();
         }
-    }
-
-    /// <summary>`--install`: per-user install, then hand over from a running (portable) copy to the installed one.</summary>
-    private static int RunInstall()
-    {
-        string? error = Installer.Install();
-        if (error != null)
-        {
-            MessageBox.Show("RestMode could not be installed:\n" + error, "RestMode", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return 1;
-        }
-        if (!Installer.RunningInstalledCopy)
-        {
-            // Close a copy that is running from the old (portable) location, then start the installed one.
-            using var m = new Mutex(false, SingleInstance.MutexName);
-            bool free = TryAcquire(m, 0);
-            if (!free)
-            {
-                SingleInstance.Signal(SingleInstance.ExitEvent);
-                free = TryAcquire(m, 20_000);
-            }
-            if (free) m.ReleaseMutex();
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Installer.InstalledExe) { UseShellExecute = true }); }
-            catch (Exception ex) { Logger.Error("Starting the installed copy failed", ex); }
-        }
-        MessageBox.Show($"RestMode is installed for this user:\n{Installer.InstalledExe}\n\n" +
-                        "It is in the Start menu and in Settings > Apps (uninstall it from there). " +
-                        "The portable RestMode.exe you started this from is no longer needed.",
-            "RestMode", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        return 0;
     }
 
     private static bool TryAcquire(Mutex m, int timeoutMs)

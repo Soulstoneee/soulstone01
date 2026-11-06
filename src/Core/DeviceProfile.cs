@@ -1,3 +1,4 @@
+using System.Windows.Forms;
 using System.Net.NetworkInformation;
 using System.Security.Principal;
 using Microsoft.Win32;
@@ -45,6 +46,39 @@ internal sealed class DeviceProfile
     public List<string> ActiveNetworks { get; init; } = new();
     public bool HasActiveWired { get; init; }
     public bool HasActiveWifi { get; init; }
+    /// <summary>NVIDIA / AMD Radeon RX / Intel Arc graphics card (a "gaming" laptop runs hotter by design).</summary>
+    public bool HasDiscreteGpu { get; init; }
+    public List<string> Gpus { get; init; } = new();
+
+    /// <summary>Lenovo / ASUS / MSI / HP / Dell / Acer / Razer / other, from the firmware's manufacturer name.</summary>
+    public string Vendor => Manufacturer switch
+    {
+        var m when m.StartsWith("LENOVO", StringComparison.OrdinalIgnoreCase) => "Lenovo",
+        var m when m.StartsWith("ASUS", StringComparison.OrdinalIgnoreCase) => "ASUS",
+        var m when m.StartsWith("Micro-Star", StringComparison.OrdinalIgnoreCase) || m.StartsWith("MSI", StringComparison.OrdinalIgnoreCase) => "MSI",
+        var m when m.StartsWith("HP", StringComparison.OrdinalIgnoreCase) || m.StartsWith("Hewlett", StringComparison.OrdinalIgnoreCase) => "HP",
+        var m when m.StartsWith("Dell", StringComparison.OrdinalIgnoreCase) || m.StartsWith("Alienware", StringComparison.OrdinalIgnoreCase) => "Dell",
+        var m when m.StartsWith("Acer", StringComparison.OrdinalIgnoreCase) => "Acer",
+        var m when m.StartsWith("Razer", StringComparison.OrdinalIgnoreCase) => "Razer",
+        "" => "unknown",
+        var m => m,
+    };
+
+    /// <summary>Automatic overheat limit: desktop 80 °C, gaming laptop 75 °C, thin laptop / handheld 70 °C.</summary>
+    public int DefaultTempLimitC => Kind switch
+    {
+        DeviceKind.Desktop => 80,
+        DeviceKind.Laptop when HasDiscreteGpu => 75,
+        _ => 70,
+    };
+
+    public string ClassText => Kind switch
+    {
+        DeviceKind.Desktop => "desktop",
+        DeviceKind.Laptop when HasDiscreteGpu => "gaming laptop",
+        DeviceKind.Laptop => "laptop",
+        _ => "handheld / tablet",
+    };
 
     /// <summary>Laptop/handheld/tablet: battery (DC) values matter. Desktops (including ones on a UPS) only use AC values.</summary>
     public bool UsesBattery => Caps.HasRealBattery;
@@ -61,6 +95,12 @@ internal sealed class DeviceProfile
         var (vendor, cpuName) = Safe(ReadCpu, (CpuVendor.Unknown, ""));
         var (mfr, model) = Safe(ReadSystem, ("", ""));
         var nets = Safe(ReadNetworks, (new List<string>(), false, false));
+        var gpus = Safe(ReadGpus, new List<string>());
+        bool dgpu = gpus.Any(g => g.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
+                                  g.Contains("Radeon RX", StringComparison.OrdinalIgnoreCase) ||
+                                  g.Contains("Radeon Pro", StringComparison.OrdinalIgnoreCase) ||
+                                  g.Contains("Arc(TM) A", StringComparison.OrdinalIgnoreCase) ||
+                                  g.Contains("Arc A", StringComparison.OrdinalIgnoreCase));
 
         return new DeviceProfile
         {
@@ -77,7 +117,19 @@ internal sealed class DeviceProfile
             ActiveNetworks = nets.Item1,
             HasActiveWired = nets.Item2,
             HasActiveWifi = nets.Item3,
+            Gpus = gpus,
+            HasDiscreteGpu = dgpu,
         };
+    }
+
+    private static List<string> ReadGpus()
+    {
+        var list = new List<string>();
+        using var s = new System.Management.ManagementObjectSearcher("SELECT Name FROM Win32_VideoController");
+        foreach (System.Management.ManagementObject mo in s.Get())
+            using (mo)
+                if (mo["Name"] is string n && n.Length > 0) list.Add(n.Trim());
+        return list;
     }
 
     public string KindText => Kind switch
@@ -94,7 +146,8 @@ internal sealed class DeviceProfile
     public string CpuText => Cpu switch { CpuVendor.Intel => "Intel", CpuVendor.Amd => "AMD", CpuVendor.Arm => "ARM", _ => "unknown CPU" };
 
     public string Summary() =>
-        $"{KindText}, {(Manufacturer.Length > 0 ? Manufacturer + " " + Model + ", " : "")}{CpuText} CPU, {SleepText}, " +
+        $"{ClassText}{(Caps.HasBattery && !Caps.HasRealBattery ? " (on a UPS)" : "")}, {(Manufacturer.Length > 0 ? Manufacturer + " " + Model + ", " : "")}{CpuText} CPU, " +
+        $"{(HasDiscreteGpu ? "discrete GPU, " : "")}{SleepText}, " +
         $"hibernate {(Caps.HibernateSupported ? "on" : "off")}, {MonitorCount} monitor(s), " +
         $"network: {(ActiveNetworks.Count > 0 ? string.Join(" + ", ActiveNetworks) : "none connected")}, " +
         $"{(Account == AccountKind.Admin ? "administrator" : "standard")} account{(Elevated ? " (running as admin)" : "")}";

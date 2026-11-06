@@ -75,6 +75,14 @@ internal static class HelperMain
             return;
         }
 
+        if (req.SensorsOnly)
+        {
+            var p = Core.Fans.BuiltInFanModes.Find(req.BuiltInFan);
+            var reading = p is { Implemented: true } ? p.ReadSensors(log) : null;
+            WriteResult(req.Id, reading != null, log, reading);
+            return;
+        }
+
         if (req.WantActive)
         {
             // ---- built-in fan modes (manufacturer's Quiet mode) ----
@@ -155,7 +163,7 @@ internal static class HelperMain
                 SaveState(state);
             }
 
-            if (state.Adapters.Count > 0)
+            if (state.Adapters.Count > 0 && !req.FansOnly)
             {
                 try
                 {
@@ -214,9 +222,9 @@ internal static class HelperMain
         catch (Exception ex) { Logger.Error("Saving helper state failed", ex); }
     }
 
-    private static void WriteResult(string id, bool ok, List<string> log)
+    private static void WriteResult(string id, bool ok, List<string> log, Core.Safety.SensorReading? sensors = null)
     {
-        try { JsonFile.Write(AppPaths.HelperResultFile, new HelperResult { Id = id, Success = ok, Messages = log }); }
+        try { JsonFile.Write(AppPaths.HelperResultFile, new HelperResult { Id = id, Success = ok, Messages = log, Sensors = sensors }); }
         catch (Exception ex) { Logger.Error("Writing helper result failed", ex); }
     }
 }

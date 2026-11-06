@@ -1,15 +1,20 @@
 using System.Diagnostics;
+using System.Drawing;
+using System.Windows.Forms;
 using RestMode.Core;
+using RestMode.UI.Wpf;
 using RestMode.Util;
 using static RestMode.Native.NativeMethods;
 
 namespace RestMode.UI;
 
 /// <summary>
-/// The application: a tray icon + menu, the global hotkey, single-instance
-/// signals (desktop shortcut "--enter"), and the Rest Mode controller.
+/// The running app: tray icon + menu, the global hotkey, single-instance
+/// signals (Start menu / desktop "Rest now", --wake, --simulate), the Rest
+/// Mode controller, and the WPF windows (main, settings, statistics, wizard,
+/// the Rest overlay).
 /// </summary>
-internal sealed class TrayApp : ApplicationContext
+internal sealed class TrayApp : IAppActions, IDisposable
 {
     private const int HotkeyId = 1;
 
@@ -21,26 +26,42 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _enterItem;
     private readonly ToolStripMenuItem _statusItem;
     private readonly SingleInstance _signals = new();
-    private SettingsForm? _settingsForm;
+    private MainWindow? _main;
+    private SettingsWindow? _settingsWindow;
+    private StatsWindow? _statsWindow;
     private bool _hotkeyRegistered;
+    private bool _exiting;
+
+    public RestModeController Controller => _controller;
 
     public TrayApp(CommandLine cmd)
     {
         _window.Init();
-        _controller = new RestModeController(_window);
+        _controller = new RestModeController(_window)
+        {
+            PlayEnterAnimation = () => RestOverlay.ShowEnterAsync(SettingsStore.Current.OverlayText),
+            PlayWakeAnimation = () =>
+            {
+                if (SettingsStore.Current.RestAnimation) RestOverlay.ShowWelcome(SettingsStore.Current.WelcomeText);
+                else RestOverlay.CloseAll();
+            },
+            HideOverlay = RestOverlay.CloseAll,
+        };
 
         var menu = new ContextMenuStrip();
         _statusItem = new ToolStripMenuItem("Awake") { Enabled = false };
-        _enterItem = new ToolStripMenuItem("Enter Rest Mode", null, async (_, _) => await EnterFromUi("tray menu"))
-        { Font = new Font(menu.Font, FontStyle.Bold) };
+        _enterItem = new ToolStripMenuItem("Rest", null, async (_, _) => await EnterFromUi("tray menu"))
+        { Font = new Font(menu.Font, System.Drawing.FontStyle.Bold) };
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_enterItem);
-        menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
+        menu.Items.Add("Open RestMode", null, (_, _) => ShowMain());
+        menu.Items.Add("Settings…", null, (_, _) => ShowSettings());
+        menu.Items.Add("Statistics", null, (_, _) => ShowStats());
         menu.Items.Add("View log", null, (_, _) => OpenLog());
-        menu.Items.Add("Restore everything now", null, async (_, _) => await _controller.RestoreEverythingAsync());
+        menu.Items.Add("Restore everything now", null, async (_, _) => await RestoreEverything());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, async (_, _) => await ExitAppAsync());
+        menu.Items.Add("Exit", null, (_, _) => ExitApp());
         menu.Opening += (_, _) => _statusItem.Text = _controller.StatusText;
 
         _tray = new NotifyIcon
@@ -50,16 +71,19 @@ internal sealed class TrayApp : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _tray.DoubleClick += (_, _) => ShowSettings();
+        _tray.DoubleClick += (_, _) => ShowMain();
 
         _controller.PhaseChanged += UpdateUi;
         _controller.Notify += ShowBalloon;
         _window.HotkeyPressed += id => { if (id == HotkeyId) _ = OnHotkey(); };
 
-        _signals.Listen(SingleInstance.EnterEvent, () => _ = EnterFromUi("desktop shortcut"), _window);
-        _signals.Listen(SingleInstance.RestoreEvent, () => _ = _controller.RestoreEverythingAsync(), _window);
-        _signals.Listen(SingleInstance.ShowEvent, ShowSettings, _window);
-        _signals.Listen(SingleInstance.ExitEvent, () => _ = ExitAppAsync(), _window);
+        _signals.Listen(SingleInstance.EnterEvent, () => _ = EnterFromUi("shortcut"), _window);
+        _signals.Listen(SingleInstance.WakeEvent, () => { if (_controller.Current == RestModeController.Phase.Resting) _ = _controller.WakeAsync("command line"); }, _window);
+        _signals.Listen(SingleInstance.RestoreEvent, () => _ = RestoreEverything(), _window);
+        _signals.Listen(SingleInstance.ShowEvent, ShowMain, _window);
+        _signals.Listen(SingleInstance.ExitEvent, ExitApp, _window);
+        _signals.Listen(SingleInstance.SimulateEvent, () => _ = _controller.OnSimulateAsync(), _window);
+        SettingsStore.Saved += RegisterHotkey;
 
         RegisterHotkey();
         _window.BeginInvoke(() => _ = StartAsync(cmd));
@@ -67,13 +91,16 @@ internal sealed class TrayApp : ApplicationContext
 
     private async Task StartAsync(CommandLine cmd)
     {
-        bool firstRun = !File.Exists(AppPaths.SettingsFile);
+        bool firstRun = !SettingsStore.Current.FirstRunDone && !File.Exists(AppPaths.SettingsFile);
         _controller.Startup();
-        if (firstRun)
+        if (!File.Exists(AppPaths.SettingsFile)) SettingsStore.Save(SettingsStore.Current);
+        if (firstRun || !SettingsStore.Current.FirstRunDone)
         {
-            SettingsStore.Save(SettingsStore.Current);
-            ShowBalloon("RestMode is ready", $"Press {SettingsStore.Current.Hotkey} or use this tray icon to enter Rest Mode.");
-            ShowSettings();
+            if (!cmd.Enter && !cmd.Startup) new WizardWindow(this).Show();
+        }
+        else if (!cmd.Startup && !cmd.Enter && !cmd.ShowSettings && !cmd.Wake)
+        {
+            ShowMain();
         }
         if (cmd.Enter) await EnterFromUi("command line");
         else if (cmd.ShowSettings) ShowSettings();
@@ -86,10 +113,12 @@ internal sealed class TrayApp : ApplicationContext
         await EnterFromUi("hotkey");
     }
 
-    private async Task EnterFromUi(string trigger)
+    public async Task EnterFromUi(string trigger)
     {
         if (_controller.Current != RestModeController.Phase.Awake) return;
-        _settingsForm?.Close();
+        _settingsWindow?.Close();
+        _statsWindow?.Close();
+        _main?.Hide();
         await _controller.EnterAsync(trigger);
     }
 
@@ -118,20 +147,38 @@ internal sealed class TrayApp : ApplicationContext
         _tray.Icon = resting ? _iconRest : _iconAwake;
         _tray.Text = resting ? "RestMode - resting" : "RestMode - awake";
         _enterItem.Enabled = _controller.Current == RestModeController.Phase.Awake;
+        if (!resting) _main?.Refresh();
     }
 
-    private void ShowSettings()
+    public void ShowMain()
     {
-        if (_settingsForm is { IsDisposed: false })
-        {
-            _settingsForm.Activate();
-            return;
-        }
-        _settingsForm = new SettingsForm(onSaved: RegisterHotkey, restoreNow: () => _controller.RestoreEverythingAsync());
-        _settingsForm.FormClosed += (_, _) => _settingsForm = null;
-        _settingsForm.Show();
-        _settingsForm.Activate();
+        if (_exiting) return;
+        _main ??= new MainWindow(this);
+        _main.Show();
+        if (_main.WindowState == System.Windows.WindowState.Minimized) _main.WindowState = System.Windows.WindowState.Normal;
+        _main.Activate();
+        _main.Refresh();
     }
+
+    public void ShowSettings()
+    {
+        if (_settingsWindow is { IsLoaded: true }) { _settingsWindow.Activate(); return; }
+        _settingsWindow = new SettingsWindow(this);
+        _settingsWindow.Closed += (_, _) => { _settingsWindow = null; _main?.Refresh(); };
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
+    public void ShowStats()
+    {
+        if (_statsWindow is { IsLoaded: true }) { _statsWindow.Activate(); return; }
+        _statsWindow = new StatsWindow();
+        _statsWindow.Closed += (_, _) => _statsWindow = null;
+        _statsWindow.Show();
+        _statsWindow.Activate();
+    }
+
+    public Task RestoreEverything() => _controller.RestoreEverythingAsync();
 
     private static void OpenLog()
     {
@@ -153,6 +200,7 @@ internal sealed class TrayApp : ApplicationContext
     public void OnFatal(Exception ex)
     {
         Logger.Error("Unexpected error", ex);
+        try { RestOverlay.CloseAll(); } catch { /* ignore */ }
         try { _controller.RestoreNowSync("unexpected error"); } catch { /* ignore */ }
         ShowBalloon("RestMode", "Something went wrong; your settings were restored. See the log for details.");
     }
@@ -162,31 +210,37 @@ internal sealed class TrayApp : ApplicationContext
     {
         Logger.Error("Fatal crash", ex);
         try { Restorer.RestoreLocal(StateStore.Load()); } catch { /* next launch will retry */ }
+        try { LidManager.RestoreAll(); } catch { /* next launch will retry */ }
     }
 
-    private async Task ExitAppAsync()
+    public async void ExitApp()
     {
+        if (_exiting) return;
+        _exiting = true;
         if (_controller.Current == RestModeController.Phase.Resting)
             await _controller.WakeAsync("RestMode is closing");
         else if (_controller.Current != RestModeController.Phase.Awake)
             _controller.RestoreNowSync("RestMode is closing");
+        _controller.OnAppExit();
+        RestOverlay.CloseAll();
+        _settingsWindow?.Close();
+        _statsWindow?.Close();
+        _main?.CloseForGood();
         Logger.Info("RestMode exiting.");
-        ExitThread();
+        Dispose();
+        System.Windows.Application.Current.Shutdown();
     }
 
-    protected override void Dispose(bool disposing)
+    public void Dispose()
     {
-        if (disposing)
-        {
-            if (_hotkeyRegistered) UnregisterHotKey(_window.Handle, HotkeyId);
-            _tray.Visible = false;
-            _tray.Dispose();
-            _signals.Dispose();
-            _controller.Dispose();
-            _window.Dispose();
-            _iconAwake.Dispose();
-            _iconRest.Dispose();
-        }
-        base.Dispose(disposing);
+        SettingsStore.Saved -= RegisterHotkey;
+        if (_hotkeyRegistered) { UnregisterHotKey(_window.Handle, HotkeyId); _hotkeyRegistered = false; }
+        _tray.Visible = false;
+        _tray.Dispose();
+        _signals.Dispose();
+        _controller.Dispose();
+        _window.Dispose();
+        _iconAwake.Dispose();
+        _iconRest.Dispose();
     }
 }

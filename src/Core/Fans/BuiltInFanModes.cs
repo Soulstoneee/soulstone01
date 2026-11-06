@@ -32,6 +32,8 @@ internal interface IBuiltInFanModes
     /// <summary>Values the helper may write (helper-state.json is user-writable, so restore values are checked).</summary>
     bool IsValidMode(int mode);
     string ModeName(int mode);
+    /// <summary>Admin. Temperatures / fan speeds from the firmware, or null if this plug-in has none.</summary>
+    Safety.SensorReading? ReadSensors(List<string> log);
 }
 
 internal static class BuiltInFanModes
@@ -149,6 +151,62 @@ internal sealed class LenovoGameZone : IBuiltInFanModes
         }
     }
 
+    /// <summary>
+    /// CPU/GPU temperature from GameZone. Fan RPM: newer models (e.g. LOQ / Legion 2023+) don't implement
+    /// GameZone's GetFan1Speed (it always returns 0 and GetFanCount = 0); their real speeds come from
+    /// LENOVO_OTHER_METHOD.GetFeatureValue (feature ids 0x04030001 / 0x04030002), the interface Lenovo's
+    /// own app uses. If neither works, fan speed is reported as "not available on this device".
+    /// </summary>
+    public Safety.SensorReading? ReadSensors(List<string> log)
+    {
+        var r = new Safety.SensorReading { Source = "Lenovo firmware" };
+        try
+        {
+            if (Call("GetCPUTemp", null) is uint cpu && cpu is > 5 and < 120) r.CpuC = cpu;
+            // The GPU reports 0-1 °C while the discrete GPU is powered off: that's "no reading", not a temperature.
+            if (Call("GetGPUTemp", null) is uint gpu && gpu is > 5 and < 120) r.GpuC = gpu;
+        }
+        catch (Exception ex) { log.Add($"Lenovo: temperature read failed: {ex.Message}"); }
+
+        var fans = new List<int>();
+        try
+        {
+            foreach (uint id in new uint[] { 0x04030001, 0x04030002 })
+                if (OtherFeature(id) is uint rpm and < 10000) fans.Add((int)rpm);
+        }
+        catch { fans.Clear(); }
+        if (fans.Count == 0)
+        {
+            try
+            {
+                if (Call("GetFanCount", null) is uint n && n > 0)
+                {
+                    if (Call("GetFan1Speed", null) is uint f1) fans.Add((int)f1);
+                    if (n > 1 && Call("GetFan2Speed", null) is uint f2) fans.Add((int)f2);
+                }
+            }
+            catch { /* not available */ }
+        }
+        r.FanRpm = fans.Count > 0 ? fans : null;
+        return r.HasTemperature || r.FanRpm != null ? r : null;
+    }
+
+    private static uint? OtherFeature(uint id)
+    {
+        using var searcher = new ManagementObjectSearcher(Ns, "SELECT * FROM LENOVO_OTHER_METHOD");
+        foreach (ManagementObject mo in searcher.Get())
+        {
+            using (mo)
+            {
+                using var inParams = mo.GetMethodParameters("GetFeatureValue");
+                inParams["IDs"] = id;
+                using var outParams = mo.InvokeMethod("GetFeatureValue", inParams, null);
+                return outParams?["value"] is object v ? Convert.ToUInt32(v) : null;
+            }
+        }
+        return null;
+    }
+
     private static uint? Call(string method, uint? arg)
     {
         using var searcher = new ManagementObjectSearcher(Ns, $"SELECT * FROM {Cls}");
@@ -200,4 +258,5 @@ internal sealed class NotSupportedYet : IBuiltInFanModes
     public bool SetMode(int mode, List<string> log) { log.Add($"{Brand}: not supported yet."); return false; }
     public bool IsValidMode(int mode) => false;
     public string ModeName(int mode) => $"mode {mode}";
+    public Safety.SensorReading? ReadSensors(List<string> log) => null;
 }
