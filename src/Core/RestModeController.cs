@@ -106,6 +106,8 @@ internal sealed class RestModeController : IDisposable
     public void Startup()
     {
         Logger.Info($"RestMode {typeof(RestModeController).Assembly.GetName().Version?.ToString(3)} started. {PowerCapabilities.Read()}");
+        TestHooks.RemoveExpiredFlags();
+        if (TestHooks.Enabled) Logger.Warn("TEST MODE is on (test flag file present) - for automated tests only.");
         _dev = DeviceProfile.Detect();
         Logger.Info($"Device: {_dev.Summary()}");
 
@@ -162,9 +164,25 @@ internal sealed class RestModeController : IDisposable
     // Enter
     // =====================================================================
 
+    /// <summary>After waking, automatic triggers (lid, schedule) can't start Rest Mode again for this long.</summary>
+    public static readonly TimeSpan AutoEnterPause = TimeSpan.FromSeconds(60);
+    private bool _lidRecheckPending;
+
     public async Task EnterAsync(string trigger, bool fromLid = false)
     {
         if (Current != Phase.Awake) return;
+
+        // Loop protection: an automatic trigger right after waking is ignored (a pressed key / opened lid
+        // means the user is here). The lid is checked again once the pause is over.
+        bool automatic = fromLid || trigger == "schedule";
+        var sinceWake = DateTime.UtcNow - _lastWakeUtc;
+        if (automatic && sinceWake < AutoEnterPause)
+        {
+            var wait = AutoEnterPause - sinceWake;
+            Logger.Info($"Not entering Rest Mode automatically ({trigger}): woke {sinceWake.TotalSeconds:0} s ago (60 s pause after waking).");
+            if (fromLid && !_lidRecheckPending) _ = RecheckLidAsync(wait);
+            return;
+        }
         if (_shutdownPending) CancelShutdown("Rest Mode entered");
 
         _settings = SettingsStore.Current.Clone();
@@ -353,6 +371,19 @@ internal sealed class RestModeController : IDisposable
             Logger.Error("Entering Rest Mode failed - restoring everything", ex);
             await ExitAsync("error while entering", wakeDisplay: true, attended: true, outcome: "Error");
         }
+    }
+
+    /// <summary>The lid was closed during the 60 s pause after waking: rest once the pause is over if it is still closed.</summary>
+    private async Task RecheckLidAsync(TimeSpan wait)
+    {
+        _lidRecheckPending = true;
+        try
+        {
+            await Task.Delay(wait + TimeSpan.FromSeconds(1));
+            if (_lidClosed == true && Current == Phase.Awake && SettingsStore.Current.LidAction == LidBehavior.Rest)
+                await EnterAsync("lid closed", fromLid: true);
+        }
+        finally { _lidRecheckPending = false; }
     }
 
     /// <summary>

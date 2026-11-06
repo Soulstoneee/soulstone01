@@ -101,6 +101,25 @@ internal static class Program
                 return 0;
             }
 
+            // Crash-loop protection: after 3 unexpected endings in 24 h, don't start automatically.
+            int unclean = CrashGuard.OnStart();
+            if (unclean >= CrashGuard.Limit)
+            {
+                try { Core.Restorer.RestoreLocal(Core.StateStore.Load()); Core.PowerPlanManager.CleanupOrphans(); Core.LidManager.RestoreAll(); }
+                catch (Exception ex) { Logger.Error("Restore after repeated crashes failed", ex); }
+                if (cmd.Startup)
+                {
+                    Logger.Warn($"RestMode ended unexpectedly {unclean} times in 24 hours - not starting automatically.");
+                    CrashGuard.OnCleanExit();
+                    MessageBox.Show($"RestMode closed unexpectedly {unclean} times in the last 24 hours, so it did not start automatically.\n\n" +
+                                    "Your normal settings were put back. Open RestMode from the Start menu to start it again, and see the log (%LOCALAPPDATA%\\RestMode\\restmode.log).",
+                        "RestMode", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return 1;
+                }
+                Logger.Warn($"RestMode ended unexpectedly {unclean} times in 24 hours; started by hand, so the count is reset.");
+                CrashGuard.Reset();
+            }
+
             System.Windows.Forms.Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             AppDomain.CurrentDomain.UnhandledException += (_, e) => TrayApp.OnProcessCrash(e.ExceptionObject as Exception);
 

@@ -84,6 +84,8 @@ internal sealed class TrayApp : IAppActions, IDisposable
         _signals.Listen(SingleInstance.ExitEvent, ExitApp, _window);
         _signals.Listen(SingleInstance.SimulateEvent, () => _ = _controller.OnSimulateAsync(), _window);
         SettingsStore.Saved += RegisterHotkey;
+        // Signing out / shutting down is a normal end, not a crash.
+        _window.SessionEnding += CrashGuard.OnCleanExit;
 
         RegisterHotkey();
         _window.BeginInvoke(() => _ = StartAsync(cmd));
@@ -227,6 +229,7 @@ internal sealed class TrayApp : IAppActions, IDisposable
         _statsWindow?.Close();
         _main?.CloseForGood();
         Logger.Info("RestMode exiting.");
+        CrashGuard.OnCleanExit();
         Dispose();
         System.Windows.Application.Current.Shutdown();
     }

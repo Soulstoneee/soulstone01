@@ -16,10 +16,35 @@ internal static class TestHooks
     /// <summary>true = pretend plugged in, false = pretend on battery, null = real.</summary>
     public static bool? OnAc { get; private set; }
 
-    public static bool Enabled => File.Exists(AppPaths.TestModeFlag);
+    /// <summary>Test flags expire: a flag file older than this is ignored and deleted, so leftovers can never trigger anything later.</summary>
+    public static readonly TimeSpan FlagLifetime = TimeSpan.FromHours(3);
+
+    private static string NoSleepFlag => Path.Combine(AppPaths.DataDir, "testmode-nosleep.flag");
+
+    public static bool Enabled => IsFresh(AppPaths.TestModeFlag);
 
     /// <summary>Automated tests: log "would sleep / shut down" instead of doing it (a sleeping PC can't wake itself up for the next test).</summary>
-    public static bool NoSleep => Enabled && File.Exists(Path.Combine(AppPaths.DataDir, "testmode-nosleep.flag"));
+    public static bool NoSleep => Enabled && IsFresh(NoSleepFlag);
+
+    private static bool IsFresh(string path)
+    {
+        try { return File.Exists(path) && DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < FlagLifetime; }
+        catch { return false; }
+    }
+
+    /// <summary>At startup: delete expired test flags and any pending simulate command.</summary>
+    public static void RemoveExpiredFlags()
+    {
+        foreach (var f in new[] { AppPaths.TestModeFlag, NoSleepFlag })
+        {
+            try
+            {
+                if (File.Exists(f) && !IsFresh(f)) { File.Delete(f); Logger.Info($"Removed an expired test file: {Path.GetFileName(f)}."); }
+            }
+            catch { /* ignore */ }
+        }
+        if (!Enabled) { try { if (File.Exists(AppPaths.SimulateFile)) File.Delete(AppPaths.SimulateFile); } catch { } }
+    }
 
     /// <summary>Applies value overrides; returns the command so the controller can act on events.</summary>
     public static string? ReadCommand()
