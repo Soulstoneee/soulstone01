@@ -72,7 +72,7 @@ internal sealed class RestModeController : IDisposable
     /// <summary>UI: the "Entering Rest Mode…" overlay, awaited before the screen goes off (2-3 s).</summary>
     public Func<Task>? PlayEnterAnimation { get; set; }
     /// <summary>UI: "Welcome back", then hide the overlay.</summary>
-    public Action? PlayWakeAnimation { get; set; }
+    public Action<TimeSpan, long>? PlayWakeAnimation { get; set; }
     /// <summary>UI: hide the overlay immediately (unattended exits).</summary>
     public Action? HideOverlay { get; set; }
 
@@ -438,17 +438,19 @@ internal sealed class RestModeController : IDisposable
 
         _input.Stop();
         _sampleTimer.Stop();
-        if (wakeDisplay)
-        {
-            DisplayController.TurnOn(_window.Handle);
-            if (attended) { try { PlayWakeAnimation?.Invoke(); } catch { /* cosmetic */ } }
-            else HideOverlay?.Invoke();
-        }
-        else HideOverlay?.Invoke();
-
         var st = _state ?? StateStore.Load();
         long rx = _activity.TotalReceived, tx = _activity.TotalSent;
         _activity.Stop();
+
+        // The welcome screen is fire-and-forget: it never delays the restore below, and a failure is ignored.
+        if (wakeDisplay)
+        {
+            DisplayController.TurnOn(_window.Handle);
+            var rested = st != null ? DateTime.UtcNow - st.StartedUtc : TimeSpan.Zero;
+            if (attended) { try { PlayWakeAnimation?.Invoke(rested, rx); } catch { try { HideOverlay?.Invoke(); } catch { } } }
+            else { try { HideOverlay?.Invoke(); } catch { } }
+        }
+        else { try { HideOverlay?.Invoke(); } catch { } }
 
         Restorer.RestoreLocal(st);
         _state = null;

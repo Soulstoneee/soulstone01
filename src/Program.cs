@@ -100,6 +100,17 @@ internal static class Program
                     app.Run();
                     return 0;
                 }
+                if (args.Any(a => a.Equals("--preview-overlay", StringComparison.OrdinalIgnoreCase)))
+                {
+                    app.Dispatcher.BeginInvoke(async () =>
+                    {
+                        try { await DevTools.PreviewAsync(); }
+                        catch (Exception ex) { Logger.Error("Preview failed", ex); }
+                        finally { app.Shutdown(); }
+                    });
+                    app.Run();
+                    return 0;
+                }
                 i = Array.FindIndex(args, a => a.Equals("--render-icon", StringComparison.OrdinalIgnoreCase));
                 if (i >= 0 && i + 1 < args.Length) return DevTools.RenderIcon(args[i + 1]);
             }

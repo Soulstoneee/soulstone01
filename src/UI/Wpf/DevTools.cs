@@ -45,13 +45,24 @@ internal static class DevTools
         Save(new WizardWindow(app), Path.Combine(dir, "wizard.png"));
         Save(new SetupWindow(), Path.Combine(dir, "setup.png"));
 
-        var overlay = new Grid { Width = 1600, Height = 900, Background = Brushes.Black };
-        overlay.Children.Add(new TextBlock
+        // Rest animation and welcome screen as a 1920 x 1080 screen at 100 / 125 / 150 % scaling.
+        foreach (var (scale, dpi) in new[] { (100, 96.0), (125, 120.0), (150, 144.0) })
         {
-            Text = SettingsStore.Current.OverlayText, FontFamily = ThemeManager.DisplayFont, FontSize = 30, FontWeight = FontWeights.Light,
-            Foreground = ThemeManager.Brush("TextBrush"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-        });
-        SaveElement(overlay, 1600, 900, Path.Combine(dir, "overlay.png"));
+            double w = 1920 * 96 / dpi, h = 1080 * 96 / dpi;
+            foreach (var (name, progress, text) in new[] { ("drawing", 0.45, false), ("closed", 1.0, true) })
+            {
+                var scene = new NeonScene(new Size(w, h), RestOverlay.FrameColor(SettingsStore.Current), SettingsStore.Current.OverlayText);
+                scene.SetProgress(progress, text);
+                var host = new Grid { Background = Brushes.Black, Width = w, Height = h };
+                host.Children.Add(scene.Root);
+                SaveElementAtDpi(host, w, h, dpi, Path.Combine(dir, $"rest-{name}-{scale}.png"));
+            }
+            var welcome = RestOverlay.BuildWelcome(RestOverlay.FrameColor(SettingsStore.Current), RestOverlay.WelcomeLine(TimeSpan.FromMinutes(134), 3_435_973_837), out var line);
+            line.ScaleX = 1;
+            var wh = new Grid { Background = Brushes.Black, Width = w, Height = h };
+            wh.Children.Add(welcome);
+            SaveElementAtDpi(wh, w, h, dpi, Path.Combine(dir, $"welcome-{scale}.png"));
+        }
         Save(new MainWindow(app), Path.Combine(dir, "main.png"));
         hidden.Dispose();
         return 0;
@@ -99,6 +110,47 @@ internal static class DevTools
     }
 
     /// <summary>Writes a multi-size .ico: a white line moon on a near-black rounded tile.</summary>
+
+    /// <summary>Renders at a given DPI (96 = 100 %, 120 = 125 %, 144 = 150 %), like a real screen with that scaling.</summary>
+    private static void SaveElementAtDpi(FrameworkElement e, double w, double h, double dpi, string file)
+    {
+        e.Measure(new Size(w, h));
+        e.Arrange(new Rect(0, 0, w, h));
+        e.UpdateLayout();
+        var bmp = new RenderTargetBitmap((int)Math.Round(w * dpi / 96), (int)Math.Round(h * dpi / 96), dpi, dpi, PixelFormats.Pbgra32);
+        bmp.Render(e);
+        var enc = new PngBitmapEncoder();
+        enc.Frames.Add(BitmapFrame.Create(bmp));
+        using var fs = File.Create(file);
+        enc.Save(fs);
+    }
+
+    /// <summary>
+    /// Live preview on the real screens with a frame-rate measurement (test mode only):
+    /// the Rest animation, then the welcome screen. Logs average fps and the longest frame.
+    /// </summary>
+    public static async Task PreviewAsync()
+    {
+        var times = new List<double>();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        double last = 0;
+        EventHandler tick = (_, _) => { double now = sw.Elapsed.TotalMilliseconds; if (last > 0) times.Add(now - last); last = now; };
+        CompositionTarget.Rendering += tick;
+        await RestOverlay.ShowEnterAsync(SettingsStore.Current);
+        CompositionTarget.Rendering -= tick;
+        var enter = times.ToList();
+        times.Clear(); last = 0;
+        await Task.Delay(600);
+        CompositionTarget.Rendering += tick;
+        RestOverlay.ShowWelcome(SettingsStore.Current, TimeSpan.FromMinutes(134), 3_435_973_837);
+        await Task.Delay(2600);
+        CompositionTarget.Rendering -= tick;
+        RestOverlay.CloseAll();
+        string Stats(List<double> t) => t.Count == 0 ? "no frames" :
+            $"{t.Count} frames, avg {1000 / t.Average():0} fps, slowest frame {t.Max():0} ms, frames over 25 ms: {t.Count(x => x > 25)}";
+        var ps = System.Windows.Forms.SystemInformation.PowerStatus;
+        Util.Logger.Info($"[preview] power={ps.PowerLineStatus}; Rest animation: {Stats(enter)}; welcome: {Stats(times)}");
+    }
     public static int RenderIcon(string file)
     {
         var sizes = new[] { 16, 24, 32, 48, 64, 128, 256 };

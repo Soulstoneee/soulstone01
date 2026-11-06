@@ -179,14 +179,23 @@ internal sealed class SettingsWindow : AppWindow
         p.Children.Add(Secondary("RestMode doesn't use the power button: when its action is \"Do nothing\", Windows doesn't tell programs it was pressed, so there's no safe way to turn it into a Rest button that can always be undone. Use the Rest button, the hotkey, the tray icon or the Start menu shortcut."));
 
         p.Children.Add(Section("Screen"));
-        p.Children.Add(Row("Rest animation", "A short \"Entering Rest Mode…\" fade before the screen turns off.", Toggle(_s.RestAnimation, v => _s.RestAnimation = v)));
-        p.Children.Add(Row("Text when entering", null, Text(_s.OverlayText, v => _s.OverlayText = v, width: 260)));
-        p.Children.Add(Row("Text when waking", null, Text(_s.WelcomeText, v => _s.WelcomeText = v, width: 260)));
-        p.Children.Add(Row("Preview", null, Flat("Show", async (_, _) =>
+        p.Children.Add(Row("Rest animation", "A neon frame draws itself around the screen, then \"Resting…\" (about 3.5 s) before the screen turns off.", Toggle(_s.RestAnimation, v => _s.RestAnimation = v)));
+        p.Children.Add(Row("Welcome back screen", "On wake: time rested and data downloaded, for about 1.5 s. Any key or click closes it.", Toggle(_s.WelcomeScreen, v => _s.WelcomeScreen = v)));
+        var custom = Text(_s.CustomFrameColor, v => _s.CustomFrameColor = v.Trim(), width: 110);
+        custom.IsEnabled = _s.FrameColor == FrameColorChoice.Custom;
+        p.Children.Add(Row("Frame color", null, Combo(new[] { "Orange", "White", "Custom" }, (int)_s.FrameColor, i =>
         {
-            await RestOverlay.ShowEnterAsync(_s.OverlayText);
-            await Task.Delay(500);
-            RestOverlay.ShowWelcome(_s.WelcomeText);
+            _s.FrameColor = (FrameColorChoice)i;
+            custom.IsEnabled = i == (int)FrameColorChoice.Custom;
+        })));
+        p.Children.Add(Row("Custom color", "#RRGGBB, e.g. #3AA0FF.", custom));
+        p.Children.Add(Row("Animation speed", null, Slider(0.5, 2, _s.AnimationSpeed, v => { _s.AnimationSpeed = Math.Round(v, 2); ThemeManager.Apply(_s); }, v => $"{v:0.0}×")));
+        p.Children.Add(Row("Preview", "Shows both screens now (about 6 s; any key or click ends the welcome screen).", Flat("Show", async (_, _) =>
+        {
+            if (!AppSettings.IsValidColor(_s.CustomFrameColor)) _s.CustomFrameColor = "#FF7A1A";
+            await RestOverlay.ShowEnterAsync(_s);
+            await Task.Delay(400);
+            RestOverlay.ShowWelcome(_s, TimeSpan.FromMinutes(134), 3_435_973_837);
         })));
         return p;
     }
@@ -417,8 +426,7 @@ internal sealed class SettingsWindow : AppWindow
     private FrameworkElement LookPage()
     {
         var p = Page("Look");
-        p.Children.Add(Section("Animation & sound"));
-        p.Children.Add(Row("Animation speed", "For the Rest / wake fades.", Slider(0.5, 2, _s.AnimationSpeed, v => { _s.AnimationSpeed = Math.Round(v, 2); ThemeManager.Apply(_s); }, v => $"{v:0.0}×")));
+        p.Children.Add(Section("Sound"));
         p.Children.Add(Row("Sounds", "A soft chime when entering and leaving Rest Mode.", Toggle(_s.Sounds, v => { _s.Sounds = v; ThemeManager.Apply(_s); })));
         return p;
     }
@@ -490,6 +498,11 @@ internal sealed class SettingsWindow : AppWindow
         if (!AppSettings.IsValidTime(_s.RestAt) || !AppSettings.IsValidTime(_s.WakeAt))
         {
             Info("Times must look like 23:30 (or be empty).");
+            return;
+        }
+        if (_s.FrameColor == FrameColorChoice.Custom && !AppSettings.IsValidColor(_s.CustomFrameColor))
+        {
+            Info("The custom frame color must look like #FF7A1A.");
             return;
         }
         if (!string.IsNullOrEmpty(_s.FanQuietConfig) && !AppSettings.IsSafeConfigName(_s.FanQuietConfig) ||

@@ -45,6 +45,9 @@ public enum LidBehavior
 
 public enum AccentColor { Silver, Gold, Blue }
 
+/// <summary>Color of the neon frame in the Rest animation.</summary>
+public enum FrameColorChoice { Orange, White, Custom }
+
 public sealed class AppRule
 {
     public string Name { get; set; } = "";
@@ -128,7 +131,13 @@ public sealed class AppSettings
 
     // --- Look & feel ------------------------------------------------------
     public bool RestAnimation { get; set; } = true;
-    public string OverlayText { get; set; } = "Entering Rest Mode…";
+    /// <summary>Text shown in the middle of the Rest animation.</summary>
+    public string OverlayText { get; set; } = "Resting…";
+    /// <summary>Show the "Welcome back" screen (time rested, data downloaded) on wake.</summary>
+    public bool WelcomeScreen { get; set; } = true;
+    public FrameColorChoice FrameColor { get; set; } = FrameColorChoice.Orange;
+    /// <summary>"#RRGGBB" used when FrameColor is Custom.</summary>
+    public string CustomFrameColor { get; set; } = "#FF7A1A";
     public string WelcomeText { get; set; } = "Welcome back";
     public AccentColor Accent { get; set; } = AccentColor.Silver;
     /// <summary>Background ornament brightness, 10-100 %.</summary>
@@ -148,6 +157,8 @@ public sealed class AppSettings
 
     /// <summary>FanControl config names are passed to an elevated process, so only plain file names are allowed.</summary>
     public static bool IsSafeConfigName(string? name) => name != null && ConfigNamePattern.IsMatch(name) && !name.Contains("..");
+
+    public static bool IsValidColor(string? c) => c != null && System.Text.RegularExpressions.Regex.IsMatch(c, "^#[0-9A-Fa-f]{6}$");
 
     public static bool IsValidTime(string? t) => string.IsNullOrEmpty(t) || TimePattern.IsMatch(t);
 
@@ -169,13 +180,15 @@ public sealed class AppSettings
         if (!Enum.IsDefined(EndAction)) EndAction = EndAction.Sleep;
         if (!Enum.IsDefined(LidAction)) LidAction = LidBehavior.Sleep;
         if (!Enum.IsDefined(Accent)) Accent = AccentColor.Silver;
+        if (!Enum.IsDefined(FrameColor)) FrameColor = FrameColorChoice.Orange;
+        if (!IsValidColor(CustomFrameColor)) CustomFrameColor = "#FF7A1A";
         if (!Enum.IsDefined(FanMode)) FanMode = FanStrategy.Auto;
         Hotkey ??= "";
         if (!IsValidTime(RestAt)) RestAt = "";
         if (!IsValidTime(WakeAt)) WakeAt = "";
         RestAt ??= "";
         WakeAt ??= "";
-        OverlayText = string.IsNullOrWhiteSpace(OverlayText) ? "Entering Rest Mode…" : OverlayText.Trim()[..Math.Min(80, OverlayText.Trim().Length)];
+        OverlayText = string.IsNullOrWhiteSpace(OverlayText) || OverlayText == "Entering Rest Mode…" ? "Resting…" : OverlayText.Trim()[..Math.Min(80, OverlayText.Trim().Length)];
         WelcomeText = string.IsNullOrWhiteSpace(WelcomeText) ? "Welcome back" : WelcomeText.Trim()[..Math.Min(80, WelcomeText.Trim().Length)];
         Apps ??= new List<AppRule>();
         Apps = Apps.Where(a => a != null && !string.IsNullOrWhiteSpace(a.Name))
