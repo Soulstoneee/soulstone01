@@ -25,12 +25,18 @@ $settings = [ordered]@{
     FanQuietConfig = 'Quiet.json'; FanNormalConfig = 'Normal.json'
     RestAnimation = $true; Sounds = $false; ShowNotifications = $true; FirstRunDone = $true
 }
+# Without an elevated test runner, switch off the steps that need admin, so no admin prompt can ever appear.
+$script:HasAdmin = [bool]$script:Admin
+if (-not $script:HasAdmin) { $settings.UseBuiltInFanModes = $false; $settings.KeepNetworkAdaptersPowered = $false }
 StopRM
 # Start from a clean crash count (earlier manual kills today would otherwise count).
 Remove-Item (Join-Path $Data 'unclean-exits.json'), (Join-Path $Data 'running.marker') -Force -ErrorAction SilentlyContinue
-$settings | ConvertTo-Json | Out-File (Join-Path $Data 'settings.json') -Encoding utf8
+# Keep the user's own settings and put them back at the end (cleanup.ps1).
+$userSettings = Join-Path $Data 'settings.json'
+if ((Test-Path $userSettings) -and -not (Test-Path "$userSettings.before-tests")) { Copy-Item $userSettings "$userSettings.before-tests" }
+$settings | ConvertTo-Json | Out-File $userSettings -Encoding utf8
 
-if (Want 'helper') {
+if ((Want 'helper') -and $HasAdmin) {
     Say "--- install the RestMode Helper task (via the dev admin task, no prompt)"
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $job = Join-Path $env:TEMP 'rm-install-helper.ps1'
@@ -60,7 +66,7 @@ if (Want 'cycles') {
         Check "cycle $i entered" $e.Ok
         Start-Sleep 4
         Check "cycle $i Rest Mode plan active" ((ActivePlanName) -eq 'RestMode (temporary)') (ActivePlanName)
-        if ($i -eq 1) { Check 'cycle 1 Lenovo Quiet mode during rest' ((LenovoMode) -eq '1') "mode=$(LenovoMode)" }
+        if ($i -eq 1 -and $HasAdmin) { Check 'cycle 1 Lenovo Quiet mode during rest' ((LenovoMode) -eq '1') "mode=$(LenovoMode)" }
         $log = LogSince $e.Mark
         Check "cycle $i no admin prompt needed (helper task)" (-not ($log | Select-String 'No answer to the admin prompt'))
         Start-Sleep 15
@@ -69,7 +75,7 @@ if (Want 'cycles') {
         Start-Sleep 3
         Check "cycle $i plan restored" ((ActivePlanName) -eq 'Balanced' -and (TempPlans) -eq 0) "$(ActivePlanName), temp plans=$(TempPlans)"
         Check "cycle $i state clean" (StateClean)
-        if ($i -eq 1) { Check 'cycle 1 Lenovo mode restored' ((LenovoMode) -eq '2') "mode=$(LenovoMode)" }
+        if ($i -eq 1 -and $HasAdmin) { Check 'cycle 1 Lenovo mode restored' ((LenovoMode) -eq '2') "mode=$(LenovoMode)" }
         Check "cycle $i no freeze" (-not (LogSince $e.Mark | Select-String 'PROBLEM|frozen'))
     }
 }
@@ -294,6 +300,27 @@ if (Want 'exit') {
     Check 'RestMode exited' (-not (Running))
     Check 'lid back to original after exit' ((Lid) -eq $originalLid) "lid=$(Lid) original=$originalLid"
     Check 'no lid backup left' (-not (Test-Path (Join-Path $Data 'lid-backup.json')))
+}
+
+# ---------------------------------------------------------------- T14 input during the animation cancels Rest
+if (Want 'cancel') {
+    Say "--- T14 a mouse move during the Rest animation cancels Rest Mode entry"
+    Start-Sleep 3
+    $m = LogCount
+    & $RM --enter | Out-Null
+    # The animation starts right after the stay-awake request (step 6 of entering).
+    $started = WaitLog 'System kept awake \(ES_SYSTEM_REQUIRED\)' $m 60
+    Check 'cancel test: animation started' ([bool]$started)
+    Start-Sleep -Milliseconds 1500
+    Nudge
+    $c = WaitLog 'cancelled by input during the Rest animation' $m 15
+    Check 'mouse move cancels Rest Mode entry' ([bool]$c) $c
+    Start-Sleep 4
+    Check 'cancel: never reached Resting' (-not (LogSince $m | Select-String '\[INFO \] Resting\.'))
+    Check 'cancel: session logged as Cancelled' ([bool](LogSince $m | Select-String 'end=Cancelled'))
+    Check 'cancel: plan restored' ((ActivePlanName) -eq 'Balanced' -and (TempPlans) -eq 0) "$(ActivePlanName), temp plans=$(TempPlans)"
+    if ($HasAdmin) { Check 'cancel: Lenovo mode restored' ((LenovoMode) -eq '2') "mode=$(LenovoMode)" }
+    Check 'cancel: state clean' (StateClean)
 }
 
 # ---------------------------------------------------------------- T13 installer + uninstall leave nothing behind

@@ -19,7 +19,7 @@ several monitors, Ethernet and Intel CPUs could not be tested here; use
 | Area | What's in it |
 |---|---|
 | **Rest** | Big Rest button, hotkey `Ctrl+Alt+Shift+R`, tray › Rest, Start › "RestMode – Rest now", desktop shortcut, laptop lid (optional), schedule ("rest at / wake at"). |
-| **Rest animation** | Neon frame on the main monitor: a glowing orange (#FF7A1A) line draws itself clockwise from the top-left at a 4.5 % margin. It flares, dims, and "Resting…" fades in and out; about 3.5 s in all. The other monitors are black. Everything stops before the screen turns off. Settings: on/off, color (orange / white / custom), speed. |
+| **Rest animation** | (Redesigned after v1.0.0.) Full black screen; on the main monitor an orange (#FF7A1A) light travels clockwise along the very edges of the screen: a 3 px line with a soft inward glow, a bright head and a tail fading over 22 % of the outline. The glow brightens a little at each corner. One lap takes 2.5 s; "Entering Rest Mode" (Segoe UI Variable, light) fades in. After 6 s, light and text fade out together over 0.5 s and the screen turns off; every frame callback is removed first. A key press or mouse move during it cancels Rest Mode entry and restores everything. Other monitors are black. Settings: on/off, color (orange / white / Windows accent / custom), lap time, length, rounded screen corners. |
 | **Welcome back** | "Welcome back", plus a grey line such as "Rested 2h 14m · 3.2 GB downloaded" and an orange line drawn left to right. It lasts about 1.5 s; any key or click closes it. It never delays the wake: it opens after everything is restored, and is skipped if anything goes wrong. On/off in Settings. |
 | **While resting** | A temporary *copy* of your power plan (CPU limited, turbo off, passive cooling; your plan is never edited). Sound muted. Network adapter kept powered. Quieter fans (vendor quiet mode → Fan Control → Windows power mode, never 0 %). The screen turns off, but the PC keeps running, so downloads continue. |
 | **Wake** | Mouse, key, controller button, lid open, schedule. Everything is put back. |
@@ -103,8 +103,8 @@ Re-tested: task and its Program Files folder removed, data folder removed, no pr
 | Lenovo Quiet ↔ Balanced through the official WMI interface | ✅ read back from the firmware each time |
 | Crash recovery with the real app | ✅ |
 | 15-minute "no loop" check after the loop-protection fix | ✅ RestMode started once, no unexpected Rest/wake |
-| Interface renders (all windows, neon frame at 0 / 25 / 50 / 75 / 100 %, welcome screen) at **100 / 125 / 150 %** scaling | ✅ checked by eye; frame closes exactly at the corner, text sharp |
-| Live frame rate, plugged in | ✅ Rest animation 67 fps on average (241 frames, 3 over 25 ms, slowest 112 ms = the very first frame); welcome screen 76 fps (slowest 37 ms) |
+| Interface renders (all windows; edge light on the top edge, at a corner, on lap 2 with the text, while fading, and with 12 px rounded corners; welcome screen) at **100 / 125 / 150 %** scaling | ✅ checked by eye; smooth gradient with no seams, line exactly at the screen edge, clean corners, text sharp |
+| Live frame rate, plugged in (edge-light animation) | ✅ 97 fps on the 100 Hz screen in two runs (599 frames, 3 over 25 ms, slowest 111 ms = the very first frame, before anything moves); drawing a frame takes 0.14 ms on average; GPU rendering (tier 2). One earlier run reached only 4 fps; the old welcome screen was slow in that run too, so the cause was outside RestMode (Wallpaper Engine was running). Welcome screen 72 fps. |
 
 ## Not tested ⚠️
 

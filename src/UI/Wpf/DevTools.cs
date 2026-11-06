@@ -49,10 +49,13 @@ internal static class DevTools
         foreach (var (scale, dpi) in new[] { (100, 96.0), (125, 120.0), (150, 144.0) })
         {
             double w = 1920 * 96 / dpi, h = 1080 * 96 / dpi;
-            foreach (var (name, progress, text) in new[] { ("drawing", 0.45, false), ("closed", 1.0, true) })
+            var s = SettingsStore.Current;
+            // 0.6 s: top edge, 0.8 s: passing the top-right corner, 3.0 s: second lap with the text, 5.8 s: fading out.
+            foreach (var (name, t, radius) in new[] { ("top", 0.6, 0), ("corner", 0.8, 0), ("lap2", 3.0, 0), ("fade", 5.8, 0), ("rounded", 0.8, 12) })
             {
-                var scene = new NeonScene(new Size(w, h), RestOverlay.FrameColor(SettingsStore.Current), SettingsStore.Current.OverlayText);
-                scene.SetProgress(progress, text);
+                if (radius > 0 && scale != 125) continue;
+                var scene = new EdgeLightScene(new Size(w, h), RestOverlay.FrameColor(s), s.OverlayText, radius, s.LapSeconds, s.AnimationSeconds);
+                scene.DrawAt(t);
                 var host = new Grid { Background = Brushes.Black, Width = w, Height = h };
                 host.Children.Add(scene.Root);
                 SaveElementAtDpi(host, w, h, dpi, Path.Combine(dir, $"rest-{name}-{scale}.png"));
@@ -149,7 +152,7 @@ internal static class DevTools
         string Stats(List<double> t) => t.Count == 0 ? "no frames" :
             $"{t.Count} frames, avg {1000 / t.Average():0} fps, slowest frame {t.Max():0} ms, frames over 25 ms: {t.Count(x => x > 25)}";
         var ps = System.Windows.Forms.SystemInformation.PowerStatus;
-        Util.Logger.Info($"[preview] power={ps.PowerLineStatus}; Rest animation: {Stats(enter)}; welcome: {Stats(times)}");
+        Util.Logger.Info($"[preview] power={ps.PowerLineStatus}, render tier={RenderCapability.Tier >> 16}, draw time per frame avg {EdgeLightScene.DrawMsAvg:0.00} ms max {EdgeLightScene.DrawMsMax:0.0} ms; Rest animation: {Stats(enter)}; welcome: {Stats(times)}");
     }
     public static int RenderIcon(string file)
     {

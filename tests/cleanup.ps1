@@ -12,4 +12,7 @@ Get-Process RestMode -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorA
 foreach ($f in 'testmode.flag', 'testmode-nosleep.flag', 'simulate.txt') {
     Remove-Item (Join-Path $data $f) -Force -ErrorAction SilentlyContinue
 }
+# Put the user's own settings back (run-tests.ps1 saved them before writing test settings).
+$saved = Join-Path $data 'settings.json.before-tests'
+if (Test-Path $saved) { Move-Item $saved (Join-Path $data 'settings.json') -Force }
 "cleanup done: RestMode running=$([bool](Get-Process RestMode -ErrorAction SilentlyContinue)), test flags left=$((Test-Path (Join-Path $data 'testmode.flag')))"

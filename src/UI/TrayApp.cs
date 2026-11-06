@@ -39,7 +39,7 @@ internal sealed class TrayApp : IAppActions, IDisposable
         _window.Init();
         _controller = new RestModeController(_window)
         {
-            PlayEnterAnimation = () => RestOverlay.ShowEnterAsync(SettingsStore.Current),
+            PlayEnterAnimation = () => RestOverlay.ShowEnterAsync(SettingsStore.Current, SettingsStore.Current.MouseMoveThresholdPx),
             PlayWakeAnimation = (rested, downloaded) =>
             {
                 if (SettingsStore.Current.WelcomeScreen) RestOverlay.ShowWelcome(SettingsStore.Current, rested, downloaded);

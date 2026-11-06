@@ -24,11 +24,11 @@ Everything RestMode does is in its log: tray icon › **View log**
 
 ## 2. Rest and wake (S3 desktops: the most common case)
 
-- [ ] Click **Rest** in the main window. On the main monitor an orange neon frame draws itself around the screen, "Resting…" fades in and out, then all monitors go dark (about 4 s). Other monitors are black during the animation.
+- [ ] Click **Rest** in the main window. On the main monitor an orange light travels clockwise along the screen edges while "Entering Rest Mode" fades in, then all monitors go dark (about 6 s, plus up to 15 s on Modern Standby PCs). Other monitors are black during the animation, and the light should look smooth (no stutter).
 - [ ] Move the mouse: the **Welcome back** screen shows how long you rested and how much was downloaded, then disappears by itself (or press a key to close it at once).
 - [ ] Repeat with the **hotkey** (`Ctrl+Alt+Shift+R`), the **tray icon › Rest**, and Start › **RestMode – Rest now**. Wake with a **key**, and with a **controller button** if you have one.
 - [ ] After each wake: `powercfg /getactivescheme` shows your plan, `powercfg /list` has no "RestMode (temporary)", the volume is as before.
-- [ ] Settings › Rest & lid: turn the **Rest animation** and **Welcome back screen** off, Rest again: the screen goes dark straight away and there's no welcome screen on wake. Turn them back on, try **White** and **Custom** frame colors with **Preview**.
+- [ ] Rest again and move the mouse during the animation: Rest Mode is cancelled, the desktop comes back and `powercfg /getactivescheme` shows your plan. Settings › Rest & lid: turn the **Rest animation** and **Welcome back screen** off, Rest again: the screen goes dark straight away and there's no welcome screen on wake. Turn them back on, try **White**, **Windows accent color** and **Custom** with **Preview**.
 
 ## 3. Several monitors (if you have 2+)
 

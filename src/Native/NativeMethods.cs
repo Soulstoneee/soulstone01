@@ -101,6 +101,13 @@ internal static class NativeMethods
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT { public int X; public int Y; }
 
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct MSLLHOOKSTRUCT
     {

@@ -53,7 +53,7 @@ a filled moon while resting.
 3. The fans get quieter (see [Fans](#fans)) - never to 0 %.
 4. The network adapter you're using stays fully powered.
 5. The sound is muted; optionally chosen apps are slowed down or paused.
-6. On the main monitor a glowing orange neon frame draws itself around the screen, "Resting…" fades in and out (about 3.5 s, other monitors black; it can be switched off or recoloured), then the screen turns off. The PC stays fully on.
+6. On the main monitor an orange light travels clockwise along the very edges of the screen while "Entering Rest Mode" fades in (about 6 s; other monitors black). Then the screen turns off and the PC stays fully on. **Changed your mind?** Press a key or move the mouse during the animation: Rest Mode is cancelled and everything is put back. The color (orange, white, Windows accent, custom), lap time, length and rounded screen corners are in Settings › Rest & lid.
 7. RestMode watches downloads. When traffic stays low for 10 minutes it does what you chose: **Sleep**, **Hibernate**, **Shut down** or **Stay** in Rest Mode. You can also tell it to watch only certain apps (e.g. `steam`, `qbittorrent`).
 
 When you wake it, everything is put back - power plan, power mode, fan mode,

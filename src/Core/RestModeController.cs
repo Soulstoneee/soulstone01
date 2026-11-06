@@ -69,8 +69,9 @@ internal sealed class RestModeController : IDisposable
     /// <summary>(title, text) for a tray balloon.</summary>
     public event Action<string, string>? Notify;
 
-    /// <summary>UI: the "Entering Rest Mode…" overlay, awaited before the screen goes off (2-3 s).</summary>
-    public Func<Task>? PlayEnterAnimation { get; set; }
+    /// <summary>UI: the Rest animation, awaited before the screen goes off (about 6 s).
+    /// Returns false when a key press or mouse move cancelled it.</summary>
+    public Func<Task<bool>>? PlayEnterAnimation { get; set; }
     /// <summary>UI: "Welcome back", then hide the overlay.</summary>
     public Action<TimeSpan, long>? PlayWakeAnimation { get; set; }
     /// <summary>UI: hide the overlay immediately (unattended exits).</summary>
@@ -345,8 +346,15 @@ internal sealed class RestModeController : IDisposable
             _ = Task.Run(NetworkWatch.RememberWifi);
             if (s.RestAnimation && !fromLid && PlayEnterAnimation != null)
             {
-                try { await PlayEnterAnimation(); }
+                bool completed = true;
+                try { completed = await PlayEnterAnimation(); }
                 catch (Exception ex) { Logger.Error("Rest animation failed (skipped)", ex); }
+                if (!completed)
+                {
+                    // The user changed their mind: put everything back, no welcome screen.
+                    await ExitAsync("cancelled by input during the Rest animation", wakeDisplay: true, attended: true, outcome: "Cancelled", welcome: false);
+                    return;
+                }
             }
             await WaitForInputQuietAsync();
             DisplayController.TurnOff(_window.Handle, _caps.ModernStandby);
@@ -429,7 +437,7 @@ internal sealed class RestModeController : IDisposable
             _ = WakeAsync(what);
     }
 
-    private async Task ExitAsync(string reason, bool wakeDisplay, bool attended, string outcome)
+    private async Task ExitAsync(string reason, bool wakeDisplay, bool attended, string outcome, bool welcome = true)
     {
         if (Current is Phase.Awake or Phase.Exiting) return;
         SetPhase(Phase.Exiting);
@@ -447,7 +455,7 @@ internal sealed class RestModeController : IDisposable
         {
             DisplayController.TurnOn(_window.Handle);
             var rested = st != null ? DateTime.UtcNow - st.StartedUtc : TimeSpan.Zero;
-            if (attended) { try { PlayWakeAnimation?.Invoke(rested, rx); } catch { try { HideOverlay?.Invoke(); } catch { } } }
+            if (attended && welcome) { try { PlayWakeAnimation?.Invoke(rested, rx); } catch { try { HideOverlay?.Invoke(); } catch { } } }
             else { try { HideOverlay?.Invoke(); } catch { } }
         }
         else { try { HideOverlay?.Invoke(); } catch { } }
@@ -488,7 +496,7 @@ internal sealed class RestModeController : IDisposable
             Logger.Session($"start={st.StartedUtc.ToLocalTime():yyyy-MM-dd HH:mm} duration={(int)dur.TotalHours}h{dur.Minutes:00}m " +
                            $"downloaded={ActivityMonitor.FormatBytes(rx)} uploaded={ActivityMonitor.FormatBytes(tx)} " +
                            $"end={outcome} ({reason})");
-            StatsStore.Add(new SessionStat
+            if (outcome != "Cancelled") StatsStore.Add(new SessionStat
             {
                 StartUtc = st.StartedUtc,
                 Minutes = Math.Round(dur.TotalMinutes, 1),

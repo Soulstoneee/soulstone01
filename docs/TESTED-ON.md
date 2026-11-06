@@ -41,8 +41,8 @@ run is in [FINAL-REPORT.md](FINAL-REPORT.md).
 | RestMode-Reset.cmd (installed and portable) | ✅ (portable fixed in v1.0) |
 | Installer (`--install --quiet`) and uninstall | ✅ everything created is removed again |
 | Helper task (admin steps without prompts) | ✅ |
-| Interface: all windows, neon Rest animation, Welcome back screen at 100 / 125 / 150 % | ✅ checked by eye |
-| Animation frame rate, plugged in | ✅ 67 fps (Rest), 76 fps (Welcome back) |
+| Interface: all windows, edge-light Rest animation (square and rounded corners), Welcome back screen at 100 / 125 / 150 % | ✅ checked by eye |
+| Animation frame rate, plugged in | ✅ 97 fps on the 100 Hz screen (Rest), 72 fps (Welcome back) |
 | Device detection | ✅ `gaming laptop, LENOVO LOQ 15ARP9, AMD CPU, discrete GPU, Modern Standby (S0ix), hibernate on, 1 monitor(s), network: Wi-Fi, administrator account` |
 | Fan Control detection (path, .NET 10 check, OneDrive warning) | ✅ |
 

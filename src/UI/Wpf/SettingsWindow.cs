@@ -179,21 +179,25 @@ internal sealed class SettingsWindow : AppWindow
         p.Children.Add(Secondary("RestMode doesn't use the power button: when its action is \"Do nothing\", Windows doesn't tell programs it was pressed, so there's no safe way to turn it into a Rest button that can always be undone. Use the Rest button, the hotkey, the tray icon or the Start menu shortcut."));
 
         p.Children.Add(Section("Screen"));
-        p.Children.Add(Row("Rest animation", "A neon frame draws itself around the screen, then \"Resting…\" (about 3.5 s) before the screen turns off.", Toggle(_s.RestAnimation, v => _s.RestAnimation = v)));
-        p.Children.Add(Row("Welcome back screen", "On wake: time rested and data downloaded, for about 1.5 s. Any key or click closes it.", Toggle(_s.WelcomeScreen, v => _s.WelcomeScreen = v)));
+        p.Children.Add(Row("Rest animation", "A light travels around the edges of the screen while \"Entering Rest Mode\" fades in, then the screen turns off. Press a key or move the mouse during it to cancel.", Toggle(_s.RestAnimation, v => _s.RestAnimation = v)));
         var custom = Text(_s.CustomFrameColor, v => _s.CustomFrameColor = v.Trim(), width: 110);
         custom.IsEnabled = _s.FrameColor == FrameColorChoice.Custom;
-        p.Children.Add(Row("Frame color", null, Combo(new[] { "Orange", "White", "Custom" }, (int)_s.FrameColor, i =>
+        var colors = new[] { FrameColorChoice.Orange, FrameColorChoice.White, FrameColorChoice.Accent, FrameColorChoice.Custom };
+        p.Children.Add(Row("Light color", null, Combo(new[] { "Orange", "White", "Windows accent color", "Custom" }, Math.Max(0, Array.IndexOf(colors, _s.FrameColor)), i =>
         {
-            _s.FrameColor = (FrameColorChoice)i;
-            custom.IsEnabled = i == (int)FrameColorChoice.Custom;
+            _s.FrameColor = colors[i];
+            custom.IsEnabled = colors[i] == FrameColorChoice.Custom;
         })));
         p.Children.Add(Row("Custom color", "#RRGGBB, e.g. #3AA0FF.", custom));
-        p.Children.Add(Row("Animation speed", null, Slider(0.5, 2, _s.AnimationSpeed, v => { _s.AnimationSpeed = Math.Round(v, 2); ThemeManager.Apply(_s); }, v => $"{v:0.0}×")));
-        p.Children.Add(Row("Preview", "Shows both screens now (about 6 s; any key or click ends the welcome screen).", Flat("Show", async (_, _) =>
+        p.Children.Add(Row("Lap time", "Seconds for the light to go once around the screen.", Slider(1.5, 5, _s.LapSeconds, v => _s.LapSeconds = Math.Round(v, 1), v => $"{v:0.0} s")));
+        p.Children.Add(Row("Animation length", "How long the animation plays before the screen turns off.", Slider(3, 12, _s.AnimationSeconds, v => _s.AnimationSeconds = Math.Round(v * 2) / 2, v => $"{Math.Round(v * 2) / 2:0.#} s")));
+        p.Children.Add(Row("Rounded screen corners", "Windows can't tell RestMode whether the screen has rounded corners. 0 = square; most rounded laptop screens are about 8-16 px.", Slider(0, 40, _s.ScreenCornerRadius, v => _s.ScreenCornerRadius = (int)Math.Round(v), v => $"{Math.Round(v):0} px")));
+        p.Children.Add(Row("Welcome back screen", "On wake: time rested and data downloaded, for about 1.5 s. Any key or click closes it.", Toggle(_s.WelcomeScreen, v => _s.WelcomeScreen = v)));
+        p.Children.Add(Row("Preview", "Plays the Rest animation and the welcome screen now. Any key or mouse move stops it.", Flat("Show", async (_, _) =>
         {
             if (!AppSettings.IsValidColor(_s.CustomFrameColor)) _s.CustomFrameColor = "#FF7A1A";
-            await RestOverlay.ShowEnterAsync(_s);
+            bool completed = await RestOverlay.ShowEnterAsync(_s.Clone(), _s.MouseMoveThresholdPx);
+            if (!completed) { RestOverlay.CloseAll(); return; }
             await Task.Delay(400);
             RestOverlay.ShowWelcome(_s, TimeSpan.FromMinutes(134), 3_435_973_837);
         })));

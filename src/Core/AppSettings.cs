@@ -46,7 +46,7 @@ public enum LidBehavior
 public enum AccentColor { Silver, Gold, Blue }
 
 /// <summary>Color of the neon frame in the Rest animation.</summary>
-public enum FrameColorChoice { Orange, White, Custom }
+public enum FrameColorChoice { Orange, White, Custom, Accent }
 
 public sealed class AppRule
 {
@@ -132,7 +132,13 @@ public sealed class AppSettings
     // --- Look & feel ------------------------------------------------------
     public bool RestAnimation { get; set; } = true;
     /// <summary>Text shown in the middle of the Rest animation.</summary>
-    public string OverlayText { get; set; } = "Resting…";
+    public string OverlayText { get; set; } = "Entering Rest Mode";
+    /// <summary>Seconds for one lap of the edge light (1.5-5).</summary>
+    public double LapSeconds { get; set; } = 2.5;
+    /// <summary>Length of the Rest animation in seconds, including the 0.5 s fade-out (3-12).</summary>
+    public double AnimationSeconds { get; set; } = 6.0;
+    /// <summary>Corner radius of the screen in pixels at 100 % (0 = square corners). Windows can't report it, so it's a setting.</summary>
+    public int ScreenCornerRadius { get; set; } = 0;
     /// <summary>Show the "Welcome back" screen (time rested, data downloaded) on wake.</summary>
     public bool WelcomeScreen { get; set; } = true;
     public FrameColorChoice FrameColor { get; set; } = FrameColorChoice.Orange;
@@ -188,7 +194,11 @@ public sealed class AppSettings
         if (!IsValidTime(WakeAt)) WakeAt = "";
         RestAt ??= "";
         WakeAt ??= "";
-        OverlayText = string.IsNullOrWhiteSpace(OverlayText) || OverlayText == "Entering Rest Mode…" ? "Resting…" : OverlayText.Trim()[..Math.Min(80, OverlayText.Trim().Length)];
+        // Older versions used "Resting…" / "Entering Rest Mode…" as the default text.
+        OverlayText = string.IsNullOrWhiteSpace(OverlayText) || OverlayText is "Resting…" or "Entering Rest Mode…" ? "Entering Rest Mode" : OverlayText.Trim()[..Math.Min(80, OverlayText.Trim().Length)];
+        LapSeconds = double.IsFinite(LapSeconds) ? Math.Clamp(LapSeconds, 1.5, 5) : 2.5;
+        AnimationSeconds = double.IsFinite(AnimationSeconds) ? Math.Clamp(AnimationSeconds, 3, 12) : 6;
+        ScreenCornerRadius = Math.Clamp(ScreenCornerRadius, 0, 40);
         WelcomeText = string.IsNullOrWhiteSpace(WelcomeText) ? "Welcome back" : WelcomeText.Trim()[..Math.Min(80, WelcomeText.Trim().Length)];
         Apps ??= new List<AppRule>();
         Apps = Apps.Where(a => a != null && !string.IsNullOrWhiteSpace(a.Name))
