@@ -77,6 +77,40 @@ internal static class HelperMain
 
         if (req.WantActive)
         {
+            // ---- built-in fan modes (manufacturer's Quiet mode) ----
+            if (req.BuiltInFan != null && state.BuiltInId == null)
+            {
+                var p = Core.Fans.BuiltInFanModes.Find(req.BuiltInFan);
+                if (p is not { Implemented: true })
+                {
+                    log.Add("Unknown built-in fan-mode plug-in - skipped.");
+                }
+                else
+                {
+                    int? current = p.ReadMode(log);
+                    if (current is not int cur)
+                        log.Add($"{p.Brand}: current mode could not be read - not changed (so it can always be restored).");
+                    else if (cur == p.QuietMode)
+                        log.Add($"{p.Brand}: already in {p.ModeName(cur)} mode.");
+                    else
+                    {
+                        // Remember what to restore BEFORE changing anything.
+                        state.BuiltInId = p.Id;
+                        state.BuiltInSavedMode = cur;
+                        SaveState(state);
+                        if (p.SetMode(p.QuietMode, log))
+                            log.Add($"{p.Brand}: was {p.ModeName(cur)}; it is restored on wake.");
+                        else
+                        {
+                            ok = false;
+                            state.BuiltInId = null;
+                            state.BuiltInSavedMode = null;
+                            SaveState(state);
+                        }
+                    }
+                }
+            }
+
             // ---- network adapters ----
             if (req.Adapters && state.Adapters.Count == 0)
             {
@@ -93,7 +127,7 @@ internal static class HelperMain
             {
                 string? exe = ResolveFanExe(trustedFanExe);
                 if (exe == null)
-                    log.Add("Fan Control not found in a trusted location - fan profile not changed.");
+                    log.Add("Fan Control not found - fan profile not changed.");
                 else if (FanControlSwitcher.Switch(exe, req.FanQuietConfig, log))
                 {
                     state.FanSwitched = true;
@@ -105,6 +139,22 @@ internal static class HelperMain
         }
         else
         {
+            if (state.BuiltInId != null)
+            {
+                var p = Core.Fans.BuiltInFanModes.Find(state.BuiltInId);
+                int saved = state.BuiltInSavedMode ?? 0;
+                if (p is { Implemented: true } && p.IsValidMode(saved) && p.SetMode(saved, log))
+                    log.Add($"{p.Brand}: your {p.ModeName(saved)} mode is back.");
+                else
+                {
+                    ok = false;
+                    log.Add("Could not restore the built-in fan mode - pick your usual mode with the laptop's key (e.g. Fn+Q) or its app.");
+                }
+                state.BuiltInId = null; // don't nag forever
+                state.BuiltInSavedMode = null;
+                SaveState(state);
+            }
+
             if (state.Adapters.Count > 0)
             {
                 try
@@ -146,7 +196,7 @@ internal static class HelperMain
 
     private static string? ResolveFanExe(string? trustedFanExe)
     {
-        if (!string.IsNullOrWhiteSpace(trustedFanExe) && File.Exists(trustedFanExe)) return trustedFanExe;
+        if (FanControlSwitcher.NormalizeExe(trustedFanExe) is string exe) return exe;
         return FanControlSwitcher.TrustedCandidates().FirstOrDefault(File.Exists);
     }
 

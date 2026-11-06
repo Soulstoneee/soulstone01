@@ -31,6 +31,8 @@ internal static class PowerGuids
     // SUB_VIDEO
     public static readonly Guid SubVideo = new("7516b95f-f776-4464-8c53-06167f40cc99");
     public static readonly Guid VideoIdle = new("3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e");         // VIDEOIDLE (seconds)
+    public static readonly Guid VideoAdapt = new("90959d22-d6a1-49b9-af93-bce885ad335b");        // VIDEOADAPT (adaptive display timeout, 0 = off)
+    public static readonly Guid VideoConLock = new("8ec4b3a5-6868-48c2-be75-4f3044be88a7");      // VIDEOCONLOCK (display off timeout on the lock screen, seconds)
 
     // SUB_SLEEP
     public static readonly Guid SubSleep = new("238c9fa8-0aad-41ed-83f4-97be242c8f20");

@@ -7,6 +7,7 @@ namespace RestMode.Util;
 ///   RestMode.exe --settings      open the settings window
 ///   RestMode.exe --restore       put every setting back to normal (emergency)
 ///   RestMode.exe --uninstall     restore + remove autostart, shortcut and helper task
+///   RestMode.exe --install       optional: install for this user (Start menu + Apps list)
 ///   RestMode.exe --startup       (used by the "start with Windows" entry)
 ///   RestMode.exe --helper ...    internal: elevated helper
 /// </summary>
@@ -16,6 +17,7 @@ internal sealed class CommandLine
     public bool ShowSettings { get; private set; }
     public bool Restore { get; private set; }
     public bool Uninstall { get; private set; }
+    public bool Install { get; private set; }
     public bool Startup { get; private set; }
     public string? HelperVerb { get; private set; }
     public string? DataDir { get; private set; }
@@ -35,6 +37,7 @@ internal sealed class CommandLine
                 case "--settings": case "/settings": c.ShowSettings = true; break;
                 case "--restore": case "/restore": c.Restore = true; break;
                 case "--uninstall": case "/uninstall": c.Uninstall = true; break;
+                case "--install": case "/install": c.Install = true; break;
                 case "--startup": c.Startup = true; break;
                 case "--helper": c.HelperVerb = Next(); break;
                 case "--data": c.DataDir = Next(); break;

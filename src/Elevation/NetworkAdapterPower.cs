@@ -13,12 +13,39 @@ namespace RestMode.Elevation;
 /// </summary>
 internal static class NetworkAdapterPower
 {
-    /// <summary>Unticks the checkbox on every physical adapter; returns the ones changed.</summary>
+    /// <summary>
+    /// Non-admin pre-check: how many CONNECTED adapters still have the checkbox
+    /// ticked. 0 means nothing to change (e.g. Wi-Fi cards on Modern Standby PCs
+    /// have no such option), so no UAC prompt is needed. -1 = couldn't tell.
+    /// </summary>
+    public static int CountActiveNeedingChange()
+    {
+        try
+        {
+            var adapters = GetPhysicalAdapters(connectedOnly: true);
+            if (adapters.Count == 0) return 0;
+            int n = 0;
+            using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT InstanceName, Enable FROM MSPower_DeviceEnable");
+            foreach (ManagementObject mo in searcher.Get())
+                using (mo)
+                {
+                    string inst = mo["InstanceName"] as string ?? "";
+                    if (adapters.Any(a => inst.StartsWith(a.pnp, StringComparison.OrdinalIgnoreCase)) && mo["Enable"] is bool b && b) n++;
+                }
+            return n;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>Unticks the checkbox on every CONNECTED physical adapter (wired or Wi-Fi); returns the ones changed.</summary>
     public static List<AdapterSnapshot> KeepPowered(List<string> log)
     {
         var changed = new List<AdapterSnapshot>();
-        var adapters = GetPhysicalAdapters();
-        if (adapters.Count == 0) { log.Add("No physical network adapters found."); return changed; }
+        var adapters = GetPhysicalAdapters(connectedOnly: true);
+        if (adapters.Count == 0) { log.Add("No connected network adapters found."); return changed; }
 
         using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM MSPower_DeviceEnable");
         foreach (ManagementObject mo in searcher.Get())
@@ -96,11 +123,12 @@ internal static class NetworkAdapterPower
         return false;
     }
 
-    private static List<(string pnp, string name)> GetPhysicalAdapters()
+    private static List<(string pnp, string name)> GetPhysicalAdapters(bool connectedOnly)
     {
         var list = new List<(string, string)>();
+        // NetConnectionStatus 2 = Connected: only the adapter(s) actually in use are kept powered.
         using var searcher = new ManagementObjectSearcher(@"root\CIMV2",
-            "SELECT PNPDeviceID, Name FROM Win32_NetworkAdapter WHERE PhysicalAdapter = TRUE");
+            "SELECT PNPDeviceID, Name FROM Win32_NetworkAdapter WHERE PhysicalAdapter = TRUE" + (connectedOnly ? " AND NetConnectionStatus = 2" : ""));
         foreach (ManagementObject mo in searcher.Get())
         {
             using (mo)

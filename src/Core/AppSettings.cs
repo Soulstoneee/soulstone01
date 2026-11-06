@@ -21,6 +21,17 @@ public enum AppAction
     Pause,
 }
 
+/// <summary>How Rest Mode makes the fans quieter.</summary>
+public enum FanStrategy
+{
+    /// <summary>Built-in manufacturer modes if found, else Fan Control if set up and running, else the Windows power mode.</summary>
+    Auto,
+    BuiltIn,
+    FanControl,
+    WindowsPowerMode,
+    Off,
+}
+
 public sealed class AppRule
 {
     public string Name { get; set; } = "";
@@ -76,8 +87,12 @@ public sealed class AppSettings
     // --- Admin features ---------------------------------------------------
     /// <summary>Untick "Allow the computer to turn off this device to save power" on network adapters while resting.</summary>
     public bool KeepNetworkAdaptersPowered { get; set; } = true;
-    public bool FanControlEnabled { get; set; } = true;
-    /// <summary>Path to FanControl.exe. Empty = auto-detect.</summary>
+
+    // --- Fans -------------------------------------------------------------
+    public FanStrategy FanMode { get; set; } = FanStrategy.Auto;
+    /// <summary>Look for the manufacturer's own Quiet/Balanced/Performance modes (gaming laptops).</summary>
+    public bool UseBuiltInFanModes { get; set; } = true;
+    /// <summary>Path to FanControl.exe or its folder. Empty = auto-detect.</summary>
     public string FanControlExe { get; set; } = "";
     public string FanQuietConfig { get; set; } = "Quiet.json";
     public string FanNormalConfig { get; set; } = "userConfig.json";
@@ -107,6 +122,7 @@ public sealed class AppSettings
                    .Select(a => new AppRule { Name = a.Name.Trim(), Action = Enum.IsDefined(a.Action) ? a.Action : AppAction.LowPriority })
                    .ToList();
         FanControlExe ??= "";
+        if (!Enum.IsDefined(FanMode)) FanMode = FanStrategy.Auto;
         if (!IsSafeConfigName(FanQuietConfig)) FanQuietConfig = "Quiet.json";
         if (!IsSafeConfigName(FanNormalConfig)) FanNormalConfig = "userConfig.json";
         return this;

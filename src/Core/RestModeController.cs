@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RestMode.Core.Fans;
 using RestMode.Elevation;
 using RestMode.UI;
 using RestMode.Util;
@@ -35,6 +36,12 @@ internal sealed class RestModeController : IDisposable
     private bool _shutdownPending;
     private bool _pendingBusy;
     private bool _pendingCanRunSilently;
+    private PowerCapabilities _caps = PowerCapabilities.Read();
+    /// <summary>Last console display state from Windows: 0 off, 1 on, 2 dimmed.</summary>
+    private int _displayState = 1;
+    /// <summary>When the 5-second sample timer last ran; a big gap means Windows froze RestMode (standby).</summary>
+    private DateTime? _lastSampleUtc;
+    private double _pausedSeconds;
 
     public Phase Current { get; private set; } = Phase.Awake;
     public event Action? PhaseChanged;
@@ -62,6 +69,7 @@ internal sealed class RestModeController : IDisposable
     {
         var caps = PowerCapabilities.Read();
         Logger.Info($"RestMode started. {caps}");
+        try { Logger.Info($"Device: {DeviceProfile.Detect().Summary()}"); } catch { /* logging only */ }
 
         var st = StateStore.Load();
         if (st?.Active == true)
@@ -86,8 +94,28 @@ internal sealed class RestModeController : IDisposable
 
         _settings = SettingsStore.Current.Clone();
         var s = _settings;
+        var dev = DeviceProfile.Detect();
+        _caps = dev.Caps;
         SetPhase(Phase.Entering);
         Logger.Info($"=== Entering Rest Mode ({trigger}) ===");
+        Logger.Info($"Device: {dev.Summary()}");
+        if (_caps.ModernStandby)
+            Logger.Info("This PC uses Modern Standby: the screen will be turned off by a short idle timer so Windows stays fully on.");
+
+        var fan = FanPlanner.Resolve(s, dev);
+        foreach (var n in fan.Notes) Logger.Info("Fans: " + n);
+        Logger.Info($"Fans: using {fan.Describe()} (plus the CPU limit / passive cooling of the Rest Mode plan).");
+
+        // Laptops / handhelds: warn if resting on battery (the end action runs at the battery limit).
+        if (dev.UsesBattery && SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline)
+        {
+            int pct = (int)Math.Round(SystemInformation.PowerStatus.BatteryLifePercent * 100);
+            Logger.Warn($"Entering Rest Mode on battery ({pct}%).");
+            Notify?.Invoke("RestMode - on battery",
+                s.LowBatteryPercent > 0
+                    ? $"Battery at {pct}%. Rest Mode ends at {s.LowBatteryPercent}%. Plug in for long downloads."
+                    : $"Battery at {pct}%. Plug in for long downloads.");
+        }
 
         var st = new RestState { Active = true, StartedUtc = DateTime.UtcNow, Trigger = trigger };
         _state = st;
@@ -95,29 +123,78 @@ internal sealed class RestModeController : IDisposable
 
         try
         {
-            // 1. Low-power plan (duplicate of the user's plan; theirs is never edited).
+            // 1. Admin-only bits FIRST (may show ONE UAC prompt). The user's own plan is still active
+            //    here, so the screen stays on while the prompt waits. (On Modern Standby PCs the Rest Mode
+            //    plan turns the screen off after 15 s idle, which would hide the prompt.) The wait is
+            //    time-limited and never blocks the UI thread; without an answer those steps are skipped.
+            int adaptersToChange = s.KeepNetworkAdaptersPowered ? NetworkAdapterPower.CountActiveNeedingChange() : 0;
+            if (s.KeepNetworkAdaptersPowered && adaptersToChange == 0)
+                Logger.Info("Network: the connected adapter(s) already stay powered (no \"allow the computer to turn off this device\" option ticked) - nothing to change.");
+            var work = new HelperWork
+            {
+                Adapters = s.KeepNetworkAdaptersPowered && adaptersToChange != 0,
+                BuiltInId = fan.BuiltIn?.Id,
+                FanExe = fan.FanControlExe,
+                FanQuiet = s.FanQuietConfig,
+                FanNormal = s.FanNormalConfig,
+            };
+            if (work.Any)
+            {
+                st.HelperRequested = true;
+                Save();
+                LogHelper("apply", await HelperClient.RunAsync(wantActive: true, work, s, allowPrompt: true));
+            }
+
+            // 2. Windows power mode slider -> Best power efficiency (universal fan fallback, no admin).
+            if (fan.WindowsPowerMode)
+            {
+                Step("Windows power mode", () =>
+                {
+                    var before = WindowsPowerMode.Get();
+                    if (before == null) { Logger.Info("Windows power mode is not available on this PC - skipped."); return; }
+                    if (before == WindowsPowerMode.BestEfficiency) { Logger.Info("Windows power mode is already Best power efficiency."); return; }
+                    st.PowerModeBefore = before;
+                    st.PowerModeChanged = true;
+                    Save();
+                    if (WindowsPowerMode.Set(WindowsPowerMode.BestEfficiency))
+                        Logger.Info($"Windows power mode: {WindowsPowerMode.Name(before)} -> Best power efficiency.");
+                    else
+                    {
+                        st.PowerModeChanged = false;
+                        Save();
+                        Logger.Info("Windows power mode could not be changed on this PC - skipped.");
+                    }
+                });
+            }
+
+            // 3. Low-power plan (duplicate of the user's plan; theirs is never edited).
             Step("power plan", () =>
             {
                 var original = PowerPlanManager.GetActiveScheme() ?? throw new InvalidOperationException("no active plan");
                 st.OriginalScheme = original;
                 Save();
                 Logger.Info($"Saved current plan: {PowerPlanManager.GetName(original) ?? original.ToString()}");
-                var temp = PowerPlanManager.CreateRestPlan(original, s);
+                var temp = PowerPlanManager.CreateRestPlan(original, s, dev);
                 st.TempScheme = temp;
                 Save();
                 if (!PowerPlanManager.Activate(temp)) throw new InvalidOperationException("could not activate the RestMode plan");
                 Logger.Info("RestMode low-power plan is active.");
+                if (!PowerPlanManager.CpuLimitApplied)
+                    Notify?.Invoke("RestMode", "This device doesn't allow limiting the CPU speed. Rest Mode still works, but the PC may stay warmer.");
             });
 
-            // 2. Admin-only bits (may show ONE UAC prompt - the screen is still on).
-            if (HelperClient.NeedsHelper(s))
+            // Some manufacturer apps switch the power plan a moment after their fan mode changes. Keep ours.
+            if (HelperClient.LoadHelperState()?.BuiltInId != null)
             {
-                st.HelperRequested = true;
-                Save();
-                LogHelper("apply", await HelperClient.SyncAsync(wantActive: true, s, allowPrompt: true));
+                await Task.Delay(2000);
+                if (st.TempScheme is Guid t && PowerPlanManager.GetActiveScheme() != t && PowerPlanManager.Exists(t))
+                {
+                    Logger.Warn("Another program switched the power plan after the fan mode changed - switching back to the Rest Mode plan.");
+                    PowerPlanManager.Activate(t);
+                }
             }
 
-            // 3. Background apps (optional).
+            // 4. Background apps (optional).
             if (s.ThrottleApps && s.Apps.Count > 0)
             {
                 try
@@ -127,7 +204,7 @@ internal sealed class RestModeController : IDisposable
                 catch (Exception ex) { Logger.Error("Throttling apps failed (skipped)", ex); }
             }
 
-            // 4. Mute.
+            // 5. Mute.
             if (s.MuteAudio)
             {
                 Step("mute", () =>
@@ -140,7 +217,7 @@ internal sealed class RestModeController : IDisposable
                 });
             }
 
-            // 5. Keep the SYSTEM awake but let the DISPLAY sleep.
+            // 6. Keep the SYSTEM awake but let the DISPLAY sleep.
             Step("keep-awake request", () =>
             {
                 var prev = SetThreadExecutionState(EXECUTION_STATE.ES_CONTINUOUS | EXECUTION_STATE.ES_SYSTEM_REQUIRED);
@@ -148,20 +225,23 @@ internal sealed class RestModeController : IDisposable
                 Logger.Info("System kept awake (ES_SYSTEM_REQUIRED), display allowed to turn off.");
             });
 
-            // 6. Start measuring traffic, then switch the screen off once the keys are released.
+            // 7. Start measuring traffic, then switch the screen off once the keys are released.
             _activity.Start();
             await WaitForInputQuietAsync();
-            DisplayController.TurnOff(_window.Handle);
+            DisplayController.TurnOff(_window.Handle, _caps.ModernStandby);
 
-            // 7. Watch for the user and for downloads finishing.
+            // 8. Watch for the user and for downloads finishing.
             _idleSince = null;
             _stayLogged = false;
             _displayReoffCount = 0;
+            _lastSampleUtc = DateTime.UtcNow;
+            _pausedSeconds = 0;
             _lastStatusLog = DateTime.UtcNow;
             _input.Start(s.MouseMoveThresholdPx, s.WakeWithController);
             _sampleTimer.Start();
             SetPhase(Phase.Resting);
             Logger.Info("Resting. Waiting for input or for downloads to finish.");
+            if (_caps.ModernStandby) _ = CheckScreenWentOffAsync(st);
         }
         catch (Exception ex)
         {
@@ -179,6 +259,20 @@ internal sealed class RestModeController : IDisposable
         var sw = Stopwatch.StartNew();
         while (GetIdleMilliseconds() < 1000 && sw.ElapsedMilliseconds < 5000)
             await Task.Delay(100);
+    }
+
+    /// <summary>
+    /// Modern Standby PCs: the idle timer should have switched the screen off by
+    /// now. If it is still on, an app is holding a "display required" request
+    /// (video playback, a presentation, some games) - say so in the log.
+    /// </summary>
+    private async Task CheckScreenWentOffAsync(RestState session)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(PowerPlanManager.ModernStandbyScreenOffSeconds + 25));
+        if (Current != Phase.Resting || !ReferenceEquals(_state, session) || _displayState == 0) return;
+        Logger.Warn("The screen is still on: an app is keeping it awake (video, presentation mode, a game). " +
+                    "Rest Mode keeps running; run 'powercfg /requests' as administrator to see which app.");
+        Notify?.Invoke("RestMode", "An app is keeping the screen on. Rest Mode is still active.");
     }
 
     // =====================================================================
@@ -222,10 +316,29 @@ internal sealed class RestModeController : IDisposable
             var r = await HelperClient.SyncAsync(wantActive: false, _settings, allowPrompt: attended);
             LogHelper("restore", r);
             if (HelperClient.HasPendingRestore()) StartPendingWatch();
+            // A manufacturer app may switch plans when its fan mode is restored: make sure the user's plan is active.
+            if (st?.OriginalScheme is Guid o && PowerPlanManager.GetActiveScheme() != o && PowerPlanManager.Exists(o))
+            {
+                Logger.Warn("Another program changed the power plan while restoring the fan mode - switching back to your plan.");
+                PowerPlanManager.Activate(o);
+            }
         }
 
         if (st != null)
         {
+            // Rest Mode must never let Windows really suspend the PC (network off, apps frozen). Verify it.
+            var standby = StandbyEvents.Since(st.StartedUtc);
+            if (_pausedSeconds > 0)
+            {
+                Logger.Warn($"PROBLEM: Windows froze apps for about {_pausedSeconds:0} s in total during this session. Windows' standby log:");
+                foreach (var line in standby) Logger.Warn("  " + line);
+            }
+            else
+            {
+                Logger.Info("Checked: the PC stayed fully running for the whole session (no app freeze detected).");
+                foreach (var line in standby) Logger.Info("  Windows standby log: " + line);
+            }
+
             var dur = DateTime.UtcNow - st.StartedUtc;
             Logger.Session($"start={st.StartedUtc.ToLocalTime():yyyy-MM-dd HH:mm} duration={(int)dur.TotalHours}h{dur.Minutes:00}m " +
                            $"downloaded={ActivityMonitor.FormatBytes(rx)} uploaded={ActivityMonitor.FormatBytes(tx)} " +
@@ -275,6 +388,20 @@ internal sealed class RestModeController : IDisposable
         var s = _settings;
         try
         {
+            // The timer fires every 5 s. A much longer gap means RestMode (and every
+            // other desktop app) was frozen - i.e. Windows really went into standby.
+            var now = DateTime.UtcNow;
+            if (_lastSampleUtc is DateTime last)
+            {
+                double gap = (now - last).TotalSeconds - _sampleTimer.Interval / 1000.0;
+                if (gap > 20)
+                {
+                    _pausedSeconds += gap;
+                    Logger.Warn($"RestMode was frozen for about {gap:0} s: Windows suspended running apps (standby). Downloads were paused.");
+                }
+            }
+            _lastSampleUtc = now;
+
             _activity.Sample();
 
             // Laptop safety: don't run the battery flat while "off".
@@ -356,8 +483,8 @@ internal sealed class RestModeController : IDisposable
             bool ok = Application.SetSuspendState(hibernate ? PowerState.Hibernate : PowerState.Suspend, false, false);
             if (!ok)
             {
-                Logger.Warn("Windows refused to sleep/hibernate (blocked by policy or a driver). Screen turned off instead.");
-                DisplayController.TurnOff(_window.Handle);
+                Logger.Warn("Windows refused to sleep/hibernate (blocked by policy or a driver). Turning the screen off instead.");
+                DisplayController.TurnOff(_window.Handle, _caps.ModernStandby);
             }
         }
         catch (Exception ex)
@@ -431,6 +558,13 @@ internal sealed class RestModeController : IDisposable
     /// </summary>
     private async void OnDisplayStateChanged(int state)
     {
+        int previous = _displayState;
+        _displayState = state;
+        if (Current == Phase.Resting && state != previous)
+            Logger.Info($"Display is now {(state == 0 ? "off" : state == 2 ? "dimmed" : "on")}.");
+
+        // Modern Standby: never send "monitor off"; the short idle timer turns the screen off again by itself.
+        if (_caps.ModernStandby) return;
         if (Current != Phase.Resting || state != 1 || _displayReoffBusy) return;
         _displayReoffBusy = true;
         try
@@ -440,7 +574,7 @@ internal sealed class RestModeController : IDisposable
 
             if (Current != Phase.Resting || _displayReoffCount >= 500) return;
             if (_displayReoffCount++ < 5) Logger.Info("Display came on without a wake input - turning it off again.");
-            DisplayController.TurnOff(_window.Handle);
+            DisplayController.TurnOff(_window.Handle, modernStandby: false);
         }
         finally { _displayReoffBusy = false; }
     }

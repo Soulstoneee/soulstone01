@@ -206,6 +206,25 @@ internal static class NativeMethods
     [DllImport("powrprof.dll")]
     public static extern bool GetPwrCapabilities(byte[] lpspc);
 
+    /// <summary>POWER_PLATFORM_ROLE: 1 Desktop, 2 Mobile, 3 Workstation, 4-7 servers/appliance, 8 Slate (tablet/handheld).</summary>
+    [DllImport("powrprof.dll")]
+    public static extern int PowerDeterminePlatformRoleEx(uint version);
+    public const uint POWER_PLATFORM_ROLE_V2 = 2;
+
+    // Windows "Power mode" slider (Settings > System > Power). These powrprof exports are what
+    // the Settings app itself uses; they need no admin rights and change nothing else.
+    [DllImport("powrprof.dll", EntryPoint = "PowerGetEffectiveOverlayScheme")]
+    public static extern uint PowerGetEffectiveOverlayScheme(out Guid overlay);
+
+    [DllImport("powrprof.dll", EntryPoint = "PowerSetActiveOverlayScheme")]
+    public static extern uint PowerSetActiveOverlayScheme(ref Guid overlay);
+
+    // ------------------------------------------------------------------ token
+    [DllImport("advapi32.dll", SetLastError = true)]
+    public static extern bool GetTokenInformation(IntPtr tokenHandle, int tokenInformationClass,
+        out int tokenInformation, int tokenInformationLength, out int returnLength);
+    public const int TokenElevationType = 18; // 1 Default, 2 Full (elevated), 3 Limited (admin, not elevated)
+
     // ------------------------------------------------------------------ processes
     public const uint PROCESS_SET_INFORMATION = 0x0200;
     public const uint PROCESS_SUSPEND_RESUME = 0x0800;

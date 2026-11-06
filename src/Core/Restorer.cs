@@ -23,6 +23,14 @@ internal static class Restorer
             if (st.OriginalScheme != null || st.TempScheme != null)
                 Try("power plan", () => PowerPlanManager.Restore(st.OriginalScheme, st.TempScheme));
 
+            if (st.PowerModeChanged)
+                Try("Windows power mode", () =>
+                {
+                    var mode = st.PowerModeBefore ?? Guid.Empty;
+                    if (Fans.WindowsPowerMode.Set(mode))
+                        Logger.Info($"Windows power mode restored: {Fans.WindowsPowerMode.Name(mode)}.");
+                });
+
             if (st.Processes.Count > 0)
                 Try("apps", () => ProcessThrottler.Restore(st.Processes));
 

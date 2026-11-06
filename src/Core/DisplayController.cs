@@ -7,13 +7,27 @@ namespace RestMode.Core;
 internal static class DisplayController
 {
     /// <summary>
-    /// SendMessage(HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2) = "power off".
+    /// Classic (S3) PCs: SendMessage(HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2)
+    /// turns every monitor off at once while the PC keeps running.
     /// SendMessageTimeout + SMTO_ABORTIFHUNG is used so one frozen window cannot
     /// block RestMode. If the broadcast fails we send it to our own window
     /// (DefWindowProc handles SC_MONITORPOWER system-wide).
+    ///
+    /// Modern Standby (S0ix) PCs: SC_MONITORPOWER is NOT sent. Windows treats it
+    /// like pressing the power button and enters Modern Standby, which freezes
+    /// desktop apps and (on most PCs) disconnects the network - the opposite of
+    /// Rest Mode. Instead the temporary power plan's short "turn off display
+    /// after" timer switches every monitor off a few seconds after the last
+    /// input, which leaves the PC fully running.
     /// </summary>
-    public static void TurnOff(IntPtr ownWindow)
+    public static void TurnOff(IntPtr ownWindow, bool modernStandby)
     {
+        if (modernStandby)
+        {
+            Logger.Info($"Modern Standby PC: the screen turns off by the idle timer in ~{PowerPlanManager.ModernStandbyScreenOffSeconds} s " +
+                        "(\"monitor off\" would make Windows enter standby and cut the network).");
+            return;
+        }
         try
         {
             var r = SendMessageTimeout(HWND_BROADCAST, WM_SYSCOMMAND, (IntPtr)SC_MONITORPOWER, (IntPtr)2,

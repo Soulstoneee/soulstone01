@@ -24,11 +24,12 @@ When you **enter Rest Mode** (hotkey `Ctrl+Alt+Shift+R`, the tray icon, or the d
    - PCI Express link power management: maximum savings
    - hard disks turn off when idle (a running transfer keeps them on)
    - Wi-Fi adapter at maximum performance, so downloads stay fast
-3. Tells Windows "don't go to sleep" but lets the **screen turn off**, then turns the screen off immediately.
+3. Tells Windows "don't go to sleep" but lets the **screen turn off**, then turns the screen off
+   (instantly on classic S3 PCs; after ~15 s of no input on Modern Standby PCs, see [below](#different-kinds-of-pcs)).
 4. Mutes the sound.
-5. Keeps the network adapters fully powered (unticks *Allow the computer to turn off this device to save power*).
+5. Keeps the network adapter you're using (wired or Wi-Fi) fully powered (unticks *Allow the computer to turn off this device to save power*, if it has that option).
 6. Optionally slows down or pauses apps you choose (never downloaders, game launchers, browsers or Windows itself).
-7. Optionally switches [Fan Control](https://getfancontrol.com) to a "Quiet" profile.
+7. Makes the fans quieter: the laptop's own **Quiet** mode if it has one, or a [Fan Control](https://getfancontrol.com) "Quiet" profile, or the Windows power mode **Best power efficiency** (see [Fans](#fans)).
 
 While resting it watches network and disk traffic. When traffic stays below
 **50 KB/s** (network) and **2 MB/s** (disk) for **10 minutes**, it assumes
@@ -65,20 +66,26 @@ RestMode doesn't rely on it. Details: [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Install
 
-RestMode is a single file. There is no installer.
+RestMode is a single **portable** file: it runs from any folder (even a USB
+stick) without installing anything. Installing is optional.
 
 1. **Get `RestMode.exe`**, either:
    - from GitHub: **Actions** tab > newest **RestMode** run > **Artifacts** > `RestMode-win-x64` (unzip it), or
    - build it yourself (see [Build](#build) below).
-2. Put it somewhere permanent, e.g. `C:\Users\<you>\AppData\Local\Programs\RestMode\RestMode.exe`.
-   (Don't run it from the Downloads folder if you plan to use *Start with Windows* or the helper task.)
-3. Double-click it. A blue ⏻ icon appears in the system tray (click the `^` arrow
+2. Double-click it. A blue ⏻ icon appears in the system tray (click the `^` arrow
    if it is hidden) and the settings window opens the first time.
+3. **Optional install** (no admin needed): Settings > **General** > *Install for this user*,
+   or run `RestMode.exe --install`. It copies RestMode to
+   `%LOCALAPPDATA%\Programs\RestMode`, adds it to the Start menu and to
+   Windows Settings > **Apps** (uninstall it from there). If you stay portable,
+   keep the exe in a permanent folder (not Downloads) if you use *Start with
+   Windows* or the helper task.
 4. In Settings:
    - **General**: tick *Start RestMode with Windows*, and click *Create "Enter Rest Mode" desktop shortcut* if you want one.
-   - **Admin / Fans**: click **Allow without UAC prompts (install helper task)**
+   - **Fans**: check what "On this PC, Rest Mode will use" says (see [Fans](#fans)).
+   - **Admin**: click **Allow without UAC prompts (install helper task)**
      and approve the one admin prompt. Without it, Windows asks for admin
-     approval each time you enter and leave Rest Mode (see [Admin rights](#admin-rights)).
+     approval when you enter and leave Rest Mode if an admin step is needed (see [Admin rights](#admin-rights)).
 5. Click **Save**.
 
 Windows SmartScreen may warn that the app is unrecognised because it isn't
@@ -108,29 +115,73 @@ The tray icon is **orange** while resting, like the PS4's rest light.
 - **Mouse movement to wake**: a few pixels ignores desk bumps; 0 = any movement.
 - **Apps tab**: apps to slow down (*Low priority* = idle priority + Windows "Efficiency mode") or freeze (*Pause*) while resting. They are always put back when you wake. Pausing is skipped automatically if the app is busy transferring data. These are **never** touched, even if you list them: Windows system processes, Steam, Epic, EA, Ubisoft, GOG, Battle.net, Xbox, Riot, torrent and download managers, OneDrive/Dropbox/Google Drive, copy tools and every web browser (RestMode can't tell whether a browser is downloading, so it leaves them all alone).
 
-## Fan control
+## Fans
 
-Windows has no standard way to control case or graphics card fans. RestMode does two things:
+Windows has no standard way to control case or graphics card fans. RestMode does this:
 
-1. **Always**: the CPU limit, turbo off and *passive cooling* make the processor run cool, so its fan slows down on its own. On most PCs this is the biggest change.
-2. **If you use [Fan Control](https://getfancontrol.com) by Rem0o** (free): RestMode switches it to a quiet profile on entry and back to your normal profile on wake, using Fan Control's command line (`FanControl.exe -c Quiet.json`).
-   - In Fan Control, make a config with gentle curves and save it as e.g. `Quiet.json`.
-   - In RestMode Settings > **Admin / Fans**: check the FanControl.exe path (click *Detect*), set *Quiet profile* = `Quiet.json` and *Normal profile* = your everyday config (e.g. `userConfig.json`).
-   - Fan Control runs as administrator, so this uses the admin helper too.
+1. **Always, on every PC**: the CPU limit, turbo off and *passive cooling* make the processor run cool, so fans that follow the CPU temperature slow down on their own. On most PCs this is the biggest change.
+2. **Plus one of these**, chosen in Settings > **Fans** > *In Rest Mode, quieten fans with*:
 
-If Fan Control isn't installed, this step is simply skipped.
+| Option | What it does | Works on |
+|---|---|---|
+| **Auto** (default) | Built-in modes if found, else Fan Control if it is set up and running, else the Windows power mode. | Any PC |
+| **Built-in fan modes** | Switches the laptop's own Quiet mode on (the Fn+Q / "Silent" mode), and your previous mode back on wake. Uses the manufacturer's firmware interface (WMI), the same one their app uses: no extra drivers, no low-level hardware access. The firmware's Quiet mode still speeds the fans up when it gets hot. | **Lenovo** Legion / LOQ (GameZone). Detected but **not supported yet**: ASUS, MSI, HP OMEN/Victus, Dell/Alienware, Acer, Razer. |
+| **Fan Control** | Switches [Fan Control](https://getfancontrol.com) (free, by Rem0o) to your Quiet config and back to your Normal config (`FanControl.exe -c Quiet.json`). | Desktops and any PC whose fans Fan Control can see. |
+| **Windows power mode** | Sets Settings > Power > *Power mode* to **Best power efficiency**, and back on wake. No admin needed. | Any Windows 10/11 PC (some PCs ignore it while a custom plan is active; the log says so). |
+| **Off** | Fans are left alone. | |
+
+Click **Detect built-in fan modes** to see what your PC has. The line *On this PC, Rest Mode will use* shows the result for your settings.
+
+### Fan Control setup
+
+Fan Control is optional; RestMode works without it.
+
+1. Install Fan Control **outside OneDrive**, ideally in `C:\Program Files\FanControl`.
+   RestMode's admin helper starts FanControl.exe as administrator, and only
+   administrators can change files in Program Files. A folder on the Desktop,
+   in Downloads or in `C:\Tools` can be changed by any program, and OneDrive can
+   make the files online-only or create conflict copies of the configs.
+   RestMode shows a warning in Settings if Fan Control is somewhere else.
+2. Check the .NET runtime: Fan Control builds need a matching .NET Desktop
+   Runtime. RestMode reads `FanControl.runtimeconfig.json` and tells you if it is missing.
+3. In Fan Control, save two configs:
+   - **Normal**: your everyday settings.
+   - **Quiet**: gentle curves, but safe: **never 0 % or "fan stop"**, a minimum of about 20-30 %, and a curve that reaches **100 % by about 70-75 °C** on both CPU and GPU temperature. Fan Control is what enforces this, so double-check the curves.
+4. RestMode Settings > **Fans**: pick the FanControl.exe (or its folder) with *Browse* / *Folder* / *Detect*, choose the Quiet and Normal configs from the lists, and click **Test** (Quiet for 10 s, then back).
+5. Leave Fan Control running (e.g. its own *Start with Windows*). RestMode **never starts Fan Control by itself**: if it isn't running, the fan step is skipped so your fans keep doing what they did before.
+
+If Fan Control can't see your fans (common on laptops, where the laptop controls them itself), use the built-in modes or the Windows power mode instead.
+
+## Different kinds of PCs
+
+RestMode detects the PC every time it starts and every time it enters Rest
+Mode, and adapts. Nothing is set up for one particular model. Settings >
+**Power** shows what it found.
+
+| | What RestMode detects | What it changes |
+|---|---|---|
+| **Desktop vs laptop vs handheld/tablet** | Battery present (a UPS doesn't count), lid present | Desktops: plugged-in (AC) power values only, no lid or battery options. Laptops: AC and battery values, lid setting respected, warning when entering Rest Mode on battery, ends Rest Mode at your battery limit. Handhelds/tablets (battery, no lid): like laptops without the lid part. |
+| **Intel vs AMD vs ARM** | CPU vendor | The same Windows processor settings work for all (boost off = Turbo Boost / Precision Boost off). Intel hybrid "E-core" settings are only written on Intel. Any setting a CPU doesn't offer is skipped, and if the CPU speed can't be limited at all, RestMode says so and carries on. |
+| **Modern Standby (S0ix) vs classic S3 sleep** | Same as `powercfg /a` | **S3**: the screen is switched off instantly. **Modern Standby**: Windows treats the instant "monitor off" command like pressing the power button and goes to standby, which freezes apps and (usually) disconnects the network. So on these PCs the temporary plan turns the screen off after ~15 s without input instead, and the PC stays fully on. After every session RestMode checks that apps were never frozen and logs Windows' own standby events. |
+| **Wired vs Wi-Fi** | Which adapter is connected | Only the adapter in use is changed, and only if it has the power-saving option. |
+| **Several monitors** | Number of monitors | All of them are turned off and woken together (Windows switches every display). |
+| **Admin vs standard account** | Account type | Standard accounts: admin steps are skipped (no password prompts at night); everything else works. |
 
 ## Admin rights
 
-RestMode runs as a normal user. Only two things need admin rights:
+RestMode runs as a normal user. Only these things need admin rights:
 
-- the network adapter *"allow the computer to turn off this device"* checkbox, and
+- the network adapter *"allow the computer to turn off this device"* checkbox,
+- switching a laptop's built-in fan mode, and
 - switching the Fan Control profile.
+
+(The Windows power mode and everything else need no admin rights.)
 
 For those, RestMode starts a short-lived admin copy of itself (`RestMode.exe --helper sync`):
 
 - **Without the helper task**: Windows shows a UAC prompt when you enter Rest Mode (before the screen turns off) and when you wake. If you say No, that step is skipped and everything else still works. If the PC goes to sleep on its own, the adapter/fan settings are put back the next time you use the PC (one prompt).
-- **With the helper task** (Settings > Admin / Fans > *Allow without UAC prompts*): one approval when installing; after that no prompts. It is an on-demand task called **RestMode Helper** in Task Scheduler. For safety it runs a copy of RestMode.exe kept in `C:\Program Files\RestMode Helper` (only administrators can change files there, so no other program can swap it for something else). **Reinstall the task after updating RestMode.exe** or moving Fan Control.
+- **Standard (non-administrator) accounts** are never prompted: the admin steps are skipped.
+- **With the helper task** (Settings > Admin > *Allow without UAC prompts*): one approval when installing; after that no prompts. It is an on-demand task called **RestMode Helper** in Task Scheduler. For safety it runs a copy of RestMode.exe kept in `C:\Program Files\RestMode Helper` (only administrators can change files there, so no other program can swap it for something else). **Reinstall the task after updating RestMode.exe** or moving Fan Control.
 - If you turn both features off, RestMode never asks for admin rights.
 
 ## Safety: your settings always come back
@@ -162,15 +213,19 @@ Example session line:
 
 ## Uninstall / restore defaults
 
-**Normal way:** run
+**Installed copy:** Windows Settings > **Apps** > RestMode > Uninstall.
+
+**Portable copy:** run
 
 ```bat
 RestMode.exe --uninstall
 ```
 
 (Win+R, then drag `RestMode.exe` into the box and add ` --uninstall`.) It
-restores every setting, removes the startup entry, desktop shortcut and helper
-task, and offers to delete its settings and logs. Then delete `RestMode.exe`.
+restores every setting (power plan, power mode, fan mode, network adapter,
+volume, apps), removes the startup entry, shortcuts and helper task, and
+offers to delete its settings and logs. Then delete `RestMode.exe` (the
+installed copy deletes itself).
 
 **Only put settings back** (e.g. after a crash, without uninstalling):
 
@@ -183,11 +238,11 @@ RestMode.exe --restore
 1. See your plans: `powercfg /list`
 2. Switch to yours (or to Balanced): `powercfg /setactive SCHEME_BALANCED`
 3. Delete any plan named *RestMode (temporary)*: `powercfg /delete <its GUID>`
-4. Turn the sound back on (speaker icon in the taskbar).
+4. Turn the sound back on (speaker icon in the taskbar), and set Settings > Power > *Power mode* back to what you use. On a gaming laptop, pick your usual fan mode with its key (e.g. Fn+Q) or app.
 5. Device Manager > Network adapters > your adapter > **Power Management**: tick *Allow the computer to turn off this device to save power* again if you had it ticked before.
 6. Remove the helper task (admin Command Prompt): `schtasks /delete /tn "RestMode Helper" /f` and delete the folder `C:\Program Files\RestMode Helper`
 7. Remove autostart: Task Manager > **Startup apps** > RestMode > Disable (or delete the `RestMode` value in `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`).
-8. Delete the folder `%LOCALAPPDATA%\RestMode`.
+8. Delete the folder `%LOCALAPPDATA%\RestMode` (and `%LOCALAPPDATA%\Programs\RestMode` if it was installed).
 
 If an app is still frozen (paused), end it in Task Manager or restart the PC.
 
@@ -200,10 +255,13 @@ If an app is still frozen (paused), end it in Task Manager or restart the PC.
 - **"Windows refused to sleep"** in the log: a driver or policy blocks sleep. Run `powercfg /requests` and `powercfg /a` in an admin Command Prompt.
 - **The hotkey doesn't work.** Another app uses it; RestMode tells you so. Pick another in Settings.
 - **ASPM / boost / cooling-policy lines say "skipped"** in the log: your PC or BIOS doesn't offer that setting. That's normal.
+- **The PC went into standby and the download stopped** (log: `PROBLEM: Windows froze apps`). The log lists Windows' own reason. On Modern Standby PCs RestMode never sends "monitor off", but the power button, closing the lid, or a manufacturer tool can still start standby.
+- **"An app is keeping the screen on"** (Modern Standby PCs): something holds a display request (video, a game, presentation mode). Rest Mode keeps running; `powercfg /requests` (admin) shows which app.
+- **Fan Control isn't switched**: the log says why (not running, config not found, .NET runtime missing, standard account). See [Fan Control setup](#fan-control-setup).
 
 ## Build
 
-You need Windows 10/11 and the free [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+You need Windows 10/11 and the free [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or newer (a newer SDK builds it too).
 
 From the repository folder, run:
 
@@ -228,13 +286,19 @@ Every push that changes the code also builds the exe on GitHub Actions (`.github
 
 ## Testing
 
-See **[docs/TEST-CHECKLIST.md](docs/TEST-CHECKLIST.md)**: enter, wake with mouse, auto-sleep after a download, crash recovery, and more.
+- **[docs/TESTED-ON.md](docs/TESTED-ON.md)**: what has actually been tested, on which PC, and what hasn't.
+- **[docs/DESKTOP-TEST-CHECKLIST.md](docs/DESKTOP-TEST-CHECKLIST.md)**: a 30-minute checklist for a desktop PC.
+- **[docs/TEST-CHECKLIST.md](docs/TEST-CHECKLIST.md)**: the full checklist: enter, wake with mouse, auto-sleep after a download, crash recovery, and more.
 
 ## Source code map
 
 | Folder / file | What it does |
 |---|---|
-| `src/Program.cs` | Start-up, single instance, command line (`--enter`, `--restore`, `--uninstall`) |
+| `src/Program.cs` | Start-up, single instance, command line (`--enter`, `--restore`, `--install`, `--uninstall`) |
+| `src/Core/DeviceProfile.cs`, `PowerCapabilities.cs` | Hardware detection: desktop/laptop/handheld, CPU vendor, S3 vs Modern Standby, network, monitors, account type |
+| `src/Core/StandbyEvents.cs` | Reads Windows' standby events after each session |
+| `src/Core/Fans/*` | Fan plug-ins: built-in manufacturer modes (`BuiltInFanModes.cs`), Windows power mode, and the priority resolver (`FanPlanner.cs`) |
+| `src/Util/Installer.cs` | Optional per-user install / Apps-list entry |
 | `src/Core/RestModeController.cs` | The main logic: enter, rest, wake, end actions, sleep/resume, log-off |
 | `src/Core/PowerPlanManager.cs` | Duplicates your plan and writes the low-power values (AC + DC); restores and cleans up |
 | `src/Core/PowerGuids.cs` | Power setting GUIDs (same as `powercfg /aliases`) |
@@ -245,7 +309,7 @@ See **[docs/TEST-CHECKLIST.md](docs/TEST-CHECKLIST.md)**: enter, wake with mouse
 | `src/Core/ActivityMonitor.cs` | Network + disk throughput, "downloads finished" detection |
 | `src/Core/ProcessThrottler.cs` | Optional low priority / pause for listed apps, with the protected list |
 | `src/Core/RestState.cs`, `AppSettings.cs` | What is saved to disk |
-| `src/Elevation/*` | Admin helper: network adapter power flag, Fan Control, the optional scheduled task |
+| `src/Elevation/*` | Admin helper: network adapter power flag, built-in fan modes, Fan Control, the optional scheduled task |
 | `src/UI/*` | Tray icon, hidden message window, settings window |
 | `docs/RESEARCH.md` | How PS4 Rest Mode works vs. Windows power management, and the design |
 

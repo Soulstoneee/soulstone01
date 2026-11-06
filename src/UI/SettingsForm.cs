@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using RestMode.Core;
+using RestMode.Core.Fans;
 using RestMode.Elevation;
 using RestMode.Util;
 
@@ -15,6 +16,7 @@ internal sealed class SettingsForm : Form
     private readonly Action _onSaved;
     private readonly Func<Task> _restoreNow;
     private readonly AppSettings _s = SettingsStore.Current.Clone();
+    private readonly DeviceProfile _dev = DeviceProfile.Detect();
 
     // General
     private readonly TextBox _hotkey = new() { ReadOnly = true, Width = 200, BackColor = SystemColors.Window };
@@ -49,13 +51,20 @@ internal sealed class SettingsForm : Form
         BackgroundColor = SystemColors.Window,
     };
 
+    // Fans
+    private readonly ComboBox _fanMode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 360, DropDownWidth = 460 };
+    private readonly CheckBox _builtIn = new() { Text = "Use the PC's built-in fan modes (Quiet / Balanced / Performance) if it has them", AutoSize = true };
+    private readonly Label _builtInStatus = Hint();
+    private readonly TextBox _fanExe = new() { Width = 400, PlaceholderText = "auto-detect" };
+    private readonly Label _fanStatus = Hint();
+    private readonly Label _fanWarning = new() { AutoSize = true, MaximumSize = new Size(620, 0), ForeColor = Color.DarkOrange };
+    private readonly ComboBox _fanQuiet = new() { Width = 200, DropDownStyle = ComboBoxStyle.DropDown };
+    private readonly ComboBox _fanNormal = new() { Width = 200, DropDownStyle = ComboBoxStyle.DropDown };
+    private readonly Label _fanPlan = new() { AutoSize = true, MaximumSize = new Size(600, 0), Font = new Font(SystemFonts.MessageBoxFont ?? DefaultFont, FontStyle.Bold) };
+
     // Admin
-    private readonly CheckBox _adapters = new() { Text = "Keep network adapters fully powered (untick \"allow the computer to turn off this device\")", AutoSize = true };
-    private readonly CheckBox _fan = new() { Text = "Switch Fan Control (Rem0o) to a quiet profile", AutoSize = true };
-    private readonly TextBox _fanExe = new() { Width = 330, PlaceholderText = "auto-detect" };
-    private readonly TextBox _fanQuiet = new() { Width = 200 };
-    private readonly TextBox _fanNormal = new() { Width = 200 };
-    private readonly Label _helperStatus = new() { AutoSize = true, MaximumSize = new Size(560, 0) };
+    private readonly CheckBox _adapters = new() { Text = "Keep the network adapter in use fully powered", AutoSize = true };
+    private readonly Label _helperStatus = new() { AutoSize = true, MaximumSize = new Size(600, 0) };
 
     public SettingsForm(Action onSaved, Func<Task> restoreNow)
     {
@@ -68,7 +77,7 @@ internal sealed class SettingsForm : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(640, 520);
+        ClientSize = new Size(700, 600);
         Font = SystemFonts.MessageBoxFont ?? Font;
         Icon = TrayIcons.Create(TrayIcons.AwakeColor);
 
@@ -77,6 +86,7 @@ internal sealed class SettingsForm : Form
         tabs.TabPages.Add(BuildPowerTab());
         tabs.TabPages.Add(BuildDownloadsTab());
         tabs.TabPages.Add(BuildAppsTab());
+        tabs.TabPages.Add(BuildFansTab());
         tabs.TabPages.Add(BuildAdminTab());
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Padding = new Padding(8) };
@@ -123,6 +133,21 @@ internal sealed class SettingsForm : Form
             MessageBox.Show(this, ok ? "Shortcut created on your desktop." : "Could not create the shortcut (see log).", "RestMode");
         };
         AddRow(t, null, shortcut);
+
+        if (Installer.RunningInstalledCopy)
+        {
+            AddRow(t, null, Hint($"Installed for this user in {Installer.InstallDir}. Uninstall from Windows Settings > Apps."));
+        }
+        else
+        {
+            var install = new Button { Text = "Install for this user (Start menu + Apps list)", AutoSize = true };
+            install.Click += (_, _) =>
+            {
+                try { Process.Start(new ProcessStartInfo(AppPaths.ExePath, "--install") { UseShellExecute = false }); }
+                catch (Exception ex) { MessageBox.Show(this, "Install failed: " + ex.Message, "RestMode"); }
+            };
+            AddRow(t, null, install, "Optional. RestMode.exe is portable and works from any folder. Installing copies it to your user profile (no admin needed).");
+        }
         return Page("General", t);
     }
 
@@ -132,23 +157,22 @@ internal sealed class SettingsForm : Form
         AddRow(t, "Maximum processor state (%):", _cpuMax, "PS4 Rest Mode runs the chip at a crawl. 20-30% keeps fans quiet but downloads fast.");
         AddRow(t, "Minimum processor state (%):", _cpuMin);
         AddRow(t, "Turn off hard disks after (seconds):", _diskIdle, "Disks only spin down when idle; a running transfer keeps them on. 0 = never.");
-        AddRow(t, null, _lid, "Warning: do not put a running laptop in a bag.");
-        AddRow(t, "On battery, end Rest Mode at (%):", _battery, "At or below this charge, the PC hibernates (or shuts down). 0 = off.");
 
-        var caps = PowerCapabilities.Read();
-        var info = new Label
-        {
-            AutoSize = true,
-            MaximumSize = new Size(580, 0),
-            ForeColor = SystemColors.GrayText,
-            Text = "This PC: " + (caps.ModernStandby
-                ? "Modern Standby (S0ix)" + (caps.ModernStandbyNetworkConnected ? " with network in standby" : "")
-                : caps.S3Supported ? "classic S3 sleep" : "no sleep state reported") +
-                   (caps.HibernateSupported ? ", hibernation available" : ", hibernation off") +
-                   (caps.HasBattery ? ", battery" : ", no battery") + ".\n" +
-                   "The low-power plan is a temporary COPY of your current plan (plugged-in and battery values). Your own plan is never edited.",
-        };
-        AddRow(t, null, info);
+        _lid.Enabled = _dev.Caps.LidPresent;
+        AddRow(t, null, _lid, _dev.Caps.LidPresent ? "Warning: do not put a running laptop in a bag." : "This PC has no lid.");
+        _battery.Enabled = _dev.UsesBattery;
+        AddRow(t, "On battery, end Rest Mode at (%):", _battery,
+            _dev.UsesBattery ? "At or below this charge, the PC hibernates (or shuts down). 0 = off." : "This PC has no battery (a UPS doesn't count).");
+
+        AddRow(t, null, Hint(
+            "This PC: " + _dev.Summary() + ".\n" +
+            (_dev.UsesBattery
+                ? "The low-power plan is a temporary COPY of your plan with plugged-in AND battery values."
+                : "Desktop: the low-power plan is a temporary COPY of your plan with plugged-in values only.") +
+            " Your own plan is never edited." +
+            (_dev.Caps.ModernStandby
+                ? $"\nModern Standby PC: the screen turns off {PowerPlanManager.ModernStandbyScreenOffSeconds} s after entering (an instant \"monitor off\" would make Windows go to standby and cut the network)."
+                : "")));
         return Page("Power", t);
     }
 
@@ -179,7 +203,7 @@ internal sealed class SettingsForm : Form
         var note = new Label
         {
             AutoSize = true,
-            MaximumSize = new Size(600, 0),
+            MaximumSize = new Size(640, 0),
             ForeColor = SystemColors.GrayText,
             Text = "Low priority = idle CPU priority + Windows Efficiency mode. Pause = frozen until you wake the PC " +
                    "(skipped automatically if the app is busy transferring data).\n" +
@@ -192,30 +216,89 @@ internal sealed class SettingsForm : Form
         return new TabPage("Apps") { Controls = { panel } };
     }
 
-    private TabPage BuildAdminTab()
+    private TabPage BuildFansTab()
     {
         var t = Table();
-        AddRow(t, null, _adapters, "Needs admin rights.");
-        AddRow(t, null, _fan, "Needs Fan Control (getfancontrol.com). Without it, the CPU limit keeps fans quiet.");
+        _fanMode.Items.AddRange(new object[]
+        {
+            "Auto (built-in > Fan Control > Windows)",
+            "Built-in fan modes only",
+            "Fan Control only",
+            "Windows power mode only",
+            "Off (don't change fans)",
+        });
+        AddRow(t, "In Rest Mode, quieten fans with:", _fanMode,
+            "Auto = the PC's built-in modes if found, else Fan Control (if set up and running), else the Windows power mode \"Best power efficiency\". " +
+            "Always on top of this: the CPU limit and passive cooling of the Rest Mode plan, which slow the CPU fan on every PC.");
 
+        // Built-in
+        AddRow(t, null, _builtIn);
+        var detectBuiltIn = new Button { Text = "Detect built-in fan modes", AutoSize = true };
+        detectBuiltIn.Click += (_, _) => { _builtInStatus.Text = BuiltInFanModes.Detect().message; UpdateFanPlan(); };
+        AddRow(t, null, detectBuiltIn);
+        AddRow(t, null, _builtInStatus);
+
+        // Fan Control
+        AddRow(t, null, new Label { Text = "Fan Control (Rem0o, optional - getfancontrol.com)", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(3, 12, 3, 0) });
         var fanRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
         var browse = new Button { Text = "Browse...", AutoSize = true };
+        var folder = new Button { Text = "Folder...", AutoSize = true };
         var detect = new Button { Text = "Detect", AutoSize = true };
         browse.Click += (_, _) =>
         {
             using var dlg = new OpenFileDialog { Filter = "FanControl.exe|FanControl.exe|Programs|*.exe", Title = "Find FanControl.exe" };
-            if (dlg.ShowDialog(this) == DialogResult.OK) _fanExe.Text = dlg.FileName;
+            if (dlg.ShowDialog(this) == DialogResult.OK) { _fanExe.Text = dlg.FileName; RefreshFanControl(); }
+        };
+        folder.Click += (_, _) =>
+        {
+            using var dlg = new FolderBrowserDialog { Description = "Choose the Fan Control folder (the one with FanControl.exe)", UseDescriptionForTitle = true };
+            if (dlg.ShowDialog(this) == DialogResult.OK) { _fanExe.Text = dlg.SelectedPath; RefreshFanControl(); }
         };
         detect.Click += (_, _) =>
         {
             var p = FanControlSwitcher.Detect();
-            if (p != null) _fanExe.Text = p;
-            else MessageBox.Show(this, "Fan Control was not found. Start it, or use Browse.", "RestMode");
+            if (p != null) { _fanExe.Text = p; RefreshFanControl(); }
+            else MessageBox.Show(this, "Fan Control was not found in Program Files, the Desktop, Downloads or C:\\Tools. Use Browse or Folder.", "RestMode");
         };
-        fanRow.Controls.AddRange(new Control[] { _fanExe, browse, detect });
-        AddRow(t, "FanControl.exe:", fanRow);
-        AddRow(t, "Quiet profile (config file):", _fanQuiet, "A config you made in Fan Control, saved in its Configurations folder.");
-        AddRow(t, "Normal profile (config file):", _fanNormal, "Switched back to when you wake the PC.");
+        _fanExe.Leave += (_, _) => RefreshFanControl();
+        fanRow.Controls.AddRange(new Control[] { browse, folder, detect });
+        AddRow(t, "FanControl.exe or folder:", _fanExe);
+        AddRow(t, null, fanRow);
+        AddRow(t, null, _fanStatus);
+        AddRow(t, null, _fanWarning);
+        AddRow(t, "Quiet config (Rest Mode):", _fanQuiet);
+        AddRow(t, "Normal config (on wake):", _fanNormal,
+            "Configs you saved in Fan Control (its Configurations folder). Make the Quiet one safe: never 0% / fan stop, " +
+            "a minimum of 20-30%, and a curve that reaches 100% by about 70-75 °C (CPU and GPU).");
+        var test = new Button { Text = "Test: Quiet for 10 s, then back", AutoSize = true };
+        test.Click += async (_, _) =>
+        {
+            ApplyValues();
+            string? exe = FanControlSwitcher.NormalizeExe(_s.FanControlExe) ?? FanControlSwitcher.Detect();
+            if (exe == null) { MessageBox.Show(this, "Choose FanControl.exe first.", "RestMode"); return; }
+            test.Enabled = false;
+            test.Text = "Testing (about 15 s)...";
+            string result = await HelperClient.TestFanControlAsync(_s, exe);
+            test.Text = "Test: Quiet for 10 s, then back";
+            test.Enabled = true;
+            MessageBox.Show(this, result, "Fan Control test");
+        };
+        AddRow(t, null, test, "Needs admin approval (like Rest Mode itself). Fan Control must be running.");
+
+        AddRow(t, null, new Label { Text = "On this PC, Rest Mode will use:", AutoSize = true, Margin = new Padding(3, 12, 3, 0) });
+        AddRow(t, null, _fanPlan);
+
+        _fanMode.SelectedIndexChanged += (_, _) => UpdateFanPlan();
+        _builtIn.CheckedChanged += (_, _) => UpdateFanPlan();
+        _fanQuiet.TextChanged += (_, _) => UpdateFanPlan();
+        return Page("Fans", t);
+    }
+
+    private TabPage BuildAdminTab()
+    {
+        var t = Table();
+        AddRow(t, null, _adapters, "Unticks \"Allow the computer to turn off this device to save power\" while resting. Needs admin rights. " +
+                                   "Only the adapter in use (wired or Wi-Fi) is changed, and only if it has that option; otherwise nothing is asked.");
 
         var install = new Button { Text = "Allow without UAC prompts (install helper task)", AutoSize = true };
         var remove = new Button { Text = "Remove helper task", AutoSize = true };
@@ -231,11 +314,64 @@ internal sealed class SettingsForm : Form
             await HelperClient.RemoveTaskAsync();
             UpdateHelperStatus();
         };
+        if (_dev.Account == AccountKind.Standard && !_dev.Elevated) install.Enabled = false;
         var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
         row.Controls.AddRange(new Control[] { install, remove });
         AddRow(t, null, row);
         AddRow(t, null, _helperStatus);
-        return Page("Admin / Fans", t);
+        return Page("Admin", t);
+    }
+
+    // ------------------------------------------------------------------ fan helpers
+
+    private void RefreshFanControl()
+    {
+        string? exe = FanControlSwitcher.NormalizeExe(_fanExe.Text) ?? (string.IsNullOrWhiteSpace(_fanExe.Text) ? FanControlSwitcher.Detect() : null);
+        var msgs = new List<string>();
+        var warnings = new List<string>();
+        if (exe == null)
+        {
+            if (string.IsNullOrWhiteSpace(_fanExe.Text)) msgs.Add("Fan Control not found (that's fine - it's optional).");
+            else warnings.Add("No FanControl.exe at this path. Choose the Fan Control folder or FanControl.exe.");
+        }
+        else
+        {
+            msgs.Add((string.IsNullOrWhiteSpace(_fanExe.Text) ? "Found: " : "OK: ") + exe);
+            if (FanControlSwitcher.CheckRuntime(exe) is string rt) warnings.Add(rt);
+            msgs.Add(FanControlSwitcher.IsRunning() ? "Fan Control is running." : "Fan Control is not running (RestMode only switches it while it runs; it never starts it).");
+            var configs = FanControlSwitcher.ListConfigs(exe);
+            if (configs.Count == 0) msgs.Add("No configs saved yet: in Fan Control, save a \"Quiet\" and a \"Normal\" config.");
+            if (FanControlSwitcher.LocationWarning(exe) is string w) warnings.Add("Warning: " + w);
+            FillConfigs(_fanQuiet, configs);
+            FillConfigs(_fanNormal, configs);
+        }
+        _fanStatus.Text = string.Join("\n", msgs);
+        _fanWarning.Text = string.Join("\n", warnings);
+        _fanWarning.Visible = warnings.Count > 0;
+        UpdateFanPlan();
+    }
+
+    private static void FillConfigs(ComboBox box, List<string> configs)
+    {
+        string current = box.Text;
+        box.Items.Clear();
+        foreach (var c in configs) box.Items.Add(c);
+        box.Text = current;
+    }
+
+    private void UpdateFanPlan()
+    {
+        try
+        {
+            var tmp = _s.Clone();
+            tmp.FanMode = (FanStrategy)Math.Max(0, _fanMode.SelectedIndex);
+            tmp.UseBuiltInFanModes = _builtIn.Checked;
+            tmp.FanControlExe = _fanExe.Text.Trim();
+            tmp.FanQuietConfig = _fanQuiet.Text.Trim();
+            var plan = FanPlanner.Resolve(tmp, _dev);
+            _fanPlan.Text = plan.Describe() + (plan.NeedsAdmin ? " (needs admin approval)" : "");
+        }
+        catch (Exception ex) { _fanPlan.Text = "?"; Logger.Info($"Fan plan preview failed: {ex.Message}"); }
     }
 
     // ------------------------------------------------------------------ values
@@ -264,11 +400,15 @@ internal sealed class SettingsForm : Form
         foreach (var a in _s.Apps)
             _apps.Rows.Add(a.Name, a.Action == AppAction.Pause ? "Pause" : "Low priority");
 
-        _adapters.Checked = _s.KeepNetworkAdaptersPowered;
-        _fan.Checked = _s.FanControlEnabled;
+        _fanMode.SelectedIndex = (int)_s.FanMode;
+        _builtIn.Checked = _s.UseBuiltInFanModes;
+        _builtInStatus.Text = BuiltInFanModes.Detect().message;
         _fanExe.Text = _s.FanControlExe;
         _fanQuiet.Text = _s.FanQuietConfig;
         _fanNormal.Text = _s.FanNormalConfig;
+        RefreshFanControl();
+
+        _adapters.Checked = _s.KeepNetworkAdaptersPowered;
         UpdateHelperStatus();
     }
 
@@ -301,11 +441,13 @@ internal sealed class SettingsForm : Form
             })
             .ToList();
 
-        _s.KeepNetworkAdaptersPowered = _adapters.Checked;
-        _s.FanControlEnabled = _fan.Checked;
+        _s.FanMode = (FanStrategy)Math.Max(0, _fanMode.SelectedIndex);
+        _s.UseBuiltInFanModes = _builtIn.Checked;
         _s.FanControlExe = _fanExe.Text.Trim();
         _s.FanQuietConfig = _fanQuiet.Text.Trim();
         _s.FanNormalConfig = _fanNormal.Text.Trim();
+
+        _s.KeepNetworkAdaptersPowered = _adapters.Checked;
     }
 
     private void SaveAndClose()
@@ -313,7 +455,7 @@ internal sealed class SettingsForm : Form
         if (!string.IsNullOrEmpty(_fanQuiet.Text.Trim()) && !AppSettings.IsSafeConfigName(_fanQuiet.Text.Trim()) ||
             !string.IsNullOrEmpty(_fanNormal.Text.Trim()) && !AppSettings.IsSafeConfigName(_fanNormal.Text.Trim()))
         {
-            MessageBox.Show(this, "Fan Control profiles must be plain file names ending in .json, e.g. Quiet.json", "RestMode");
+            MessageBox.Show(this, "Fan Control configs must be plain file names ending in .json, e.g. Quiet.json", "RestMode");
             return;
         }
 
@@ -332,16 +474,26 @@ internal sealed class SettingsForm : Form
     private void UpdateHelperStatus()
     {
         bool installed = TaskInstaller.IsInstalled();
-        _helperStatus.Text = HelperClient.IsElevated
-            ? "RestMode is running as administrator: no prompts needed."
+        _helperStatus.Text =
+            HelperClient.IsElevated ? "RestMode is running as administrator: no prompts needed."
+            : _dev.Account == AccountKind.Standard
+                ? "This is a standard (non-administrator) account. Admin-only steps (network adapter option, built-in fan modes, Fan Control) are skipped; everything else works. To use them, sign in with an administrator account, or run RestMode as administrator."
             : installed
                 ? "Helper task installed: admin features run without UAC prompts. Reinstall it after updating RestMode.exe or changing the FanControl.exe path."
-                : "Helper task not installed: you'll see a UAC prompt when entering/leaving Rest Mode if an admin feature is on.";
+                : "Helper task not installed: you'll see a UAC prompt when entering/leaving Rest Mode if an admin feature is needed.";
     }
 
     // ------------------------------------------------------------------ layout helpers
 
     private static NumericUpDown Num(int min, int max) => new() { Minimum = min, Maximum = max, Width = 100, ThousandsSeparator = true };
+
+    private static Label Hint(string text = "") => new()
+    {
+        Text = text,
+        AutoSize = true,
+        MaximumSize = new Size(620, 0),
+        ForeColor = SystemColors.GrayText,
+    };
 
     private static TableLayoutPanel Table() => new()
     {
@@ -379,7 +531,7 @@ internal sealed class SettingsForm : Form
             {
                 Text = hint,
                 AutoSize = true,
-                MaximumSize = new Size(560, 0),
+                MaximumSize = new Size(600, 0),
                 ForeColor = SystemColors.GrayText,
                 Margin = new Padding(label == null ? 20 : 3, 0, 3, 6),
             };

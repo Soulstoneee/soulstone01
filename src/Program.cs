@@ -19,6 +19,8 @@ internal static class Program
         Logger.Init(AppPaths.LogFile);
         ApplicationConfiguration.Initialize();
 
+        if (cmd.Install) return RunInstall();
+
         using var mutex = new Mutex(false, SingleInstance.MutexName);
         bool owned = TryAcquire(mutex, 0);
         if (!owned)
@@ -61,6 +63,36 @@ internal static class Program
         {
             if (owned) mutex.ReleaseMutex();
         }
+    }
+
+    /// <summary>`--install`: per-user install, then hand over from a running (portable) copy to the installed one.</summary>
+    private static int RunInstall()
+    {
+        string? error = Installer.Install();
+        if (error != null)
+        {
+            MessageBox.Show("RestMode could not be installed:\n" + error, "RestMode", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return 1;
+        }
+        if (!Installer.RunningInstalledCopy)
+        {
+            // Close a copy that is running from the old (portable) location, then start the installed one.
+            using var m = new Mutex(false, SingleInstance.MutexName);
+            bool free = TryAcquire(m, 0);
+            if (!free)
+            {
+                SingleInstance.Signal(SingleInstance.ExitEvent);
+                free = TryAcquire(m, 20_000);
+            }
+            if (free) m.ReleaseMutex();
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Installer.InstalledExe) { UseShellExecute = true }); }
+            catch (Exception ex) { Logger.Error("Starting the installed copy failed", ex); }
+        }
+        MessageBox.Show($"RestMode is installed for this user:\n{Installer.InstalledExe}\n\n" +
+                        "It is in the Start menu and in Settings > Apps (uninstall it from there). " +
+                        "The portable RestMode.exe you started this from is no longer needed.",
+            "RestMode", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return 0;
     }
 
     private static bool TryAcquire(Mutex m, int timeoutMs)

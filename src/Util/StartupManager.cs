@@ -18,12 +18,12 @@ internal static class StartupManager
         catch { return false; }
     }
 
-    public static void SetEnabled(bool enabled)
+    public static void SetEnabled(bool enabled, string? exe = null)
     {
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-            if (enabled) key.SetValue(ValueName, $"\"{AppPaths.ExePath}\" --startup");
+            if (enabled) key.SetValue(ValueName, $"\"{exe ?? AppPaths.ExePath}\" --startup");
             else if (key.GetValue(ValueName) != null) key.DeleteValue(ValueName);
         }
         catch (Exception ex)

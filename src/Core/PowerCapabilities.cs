@@ -15,7 +15,11 @@ internal sealed class PowerCapabilities
     public bool ModernStandby { get; private init; }
     public bool ModernStandbyNetworkConnected { get; private init; }
     public bool HasBattery { get; private init; }
+    /// <summary>True for a UPS (uninterruptible power supply): "batteries" that are not a laptop battery.</summary>
+    public bool BatteriesAreShortTerm { get; private init; }
     public bool LidPresent { get; private init; }
+    /// <summary>A real internal battery (laptop / tablet / handheld), not a UPS on a desktop.</summary>
+    public bool HasRealBattery => HasBattery && !BatteriesAreShortTerm;
 
     public static PowerCapabilities Read()
     {
@@ -31,6 +35,7 @@ internal sealed class PowerCapabilities
                 ModernStandby = b[20] != 0,      // AoAc
                 ModernStandbyNetworkConnected = b[23] != 0, // AoAcConnectivitySupported
                 HasBattery = b[30] != 0,         // SystemBatteriesPresent
+                BatteriesAreShortTerm = b[31] != 0, // BatteriesAreShortTerm (UPS)
             };
         }
         catch (Exception ex)
@@ -42,5 +47,5 @@ internal sealed class PowerCapabilities
 
     public override string ToString() =>
         $"S3 sleep={S3Supported}, hibernate={HibernateSupported}, Modern Standby={ModernStandby}" +
-        $" (network-connected={ModernStandbyNetworkConnected}), battery={HasBattery}, lid={LidPresent}";
+        $" (network-connected={ModernStandbyNetworkConnected}), battery={HasBattery}{(BatteriesAreShortTerm ? " (UPS)" : "")}, lid={LidPresent}";
 }

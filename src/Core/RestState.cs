@@ -21,6 +21,10 @@ public sealed class RestState
     /// <summary>The temporary duplicated plan; deleted on restore.</summary>
     public Guid? TempScheme { get; set; }
 
+    /// <summary>Windows "Power mode" slider before Rest Mode (Guid.Empty = Balanced), if RestMode changed it.</summary>
+    public Guid? PowerModeBefore { get; set; }
+    public bool PowerModeChanged { get; set; }
+
     public AudioSnapshot? Audio { get; set; }
     public List<ProcessSnapshot> Processes { get; set; } = new();
     public bool HelperRequested { get; set; }
