@@ -52,8 +52,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Bundled fonts (SIL Open Font License, see Assets/Fonts/OFL-*.txt) and the theme file. -->
-    <Resource Include="Assets\Fonts\*.ttf" />
+    <!-- The theme file (all colors / fonts / styles) and the app icon. -->
     <Page Remove="UI\Wpf\Theme.xaml" />
     <EmbeddedResource Include="UI\Wpf\Theme.xaml" LogicalName="RestMode.Theme.xaml" />
     <Resource Include="RestMode.ico" />

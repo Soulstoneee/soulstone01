@@ -1,20 +1,18 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Media;
 using RestMode.Core;
 
 namespace RestMode.UI.Wpf;
 
 /// <summary>Statistics: time in Rest Mode, data downloaded, average temperatures, recent sessions.</summary>
-internal sealed class StatsWindow : OrnateWindow
+internal sealed class StatsWindow : AppWindow
 {
-    public StatsWindow() : base("RestMode · Statistics", 900, 760)
+    public StatsWindow() : base("Statistics", 760, 640)
     {
-        var data = StatsStore.Load();
-        var s = data.Sessions;
-        var p = new StackPanel { Margin = new Thickness(50, 0, 50, 20) };
-        p.Children.Add(Heading("Statistics", 52));
+        var s = StatsStore.Load().Sessions;
+        var p = new StackPanel { Margin = new Thickness(40, 10, 40, 24) };
+        p.Children.Add(Heading("Statistics", 24));
 
         double minutes = s.Sum(x => x.Minutes);
         long down = s.Sum(x => x.Downloaded);
@@ -22,39 +20,53 @@ internal sealed class StatsWindow : OrnateWindow
         var gpu = s.Where(x => x.AvgGpuC != null).Select(x => x.AvgGpuC!.Value).ToList();
         double? peak = s.Where(x => x.PeakC != null).Select(x => x.PeakC!.Value).DefaultIfEmpty().Max();
 
-        var grid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 10, 0, 10) };
+        var grid = new UniformGrid { Columns = 3, Margin = new Thickness(0, 18, 0, 6) };
         void Stat(string label, string value)
         {
-            var sp = new StackPanel { Margin = new Thickness(0, 8, 20, 8) };
-            var tb = new TextBlock { Text = value, FontFamily = ThemeManager.SerifFont, FontSize = 40, Foreground = (Brush)FindResource("AccentBrush") };
-            System.Windows.Documents.Typography.SetNumeralStyle(tb, FontNumeralStyle.Lining);
-            sp.Children.Add(tb);
-            sp.Children.Add(Hint(label));
-            grid.Children.Add(sp);
+            var card = new Border
+            {
+                Background = ThemeManager.Brush("PanelBrush"),
+                BorderBrush = ThemeManager.Brush("BorderBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(16, 12, 16, 12),
+                Margin = new Thickness(0, 0, 10, 10),
+            };
+            var sp = new StackPanel();
+            sp.Children.Add(new TextBlock { Text = value, Style = ThemeManager.Style("Title"), FontSize = 24 });
+            sp.Children.Add(Secondary(label));
+            card.Child = sp;
+            grid.Children.Add(card);
         }
-        Stat("Rest Mode sessions", s.Count.ToString());
+        Stat("sessions", s.Count.ToString());
         Stat("time in Rest Mode", minutes >= 60 ? $"{minutes / 60:0.#} h" : $"{minutes:0} min");
-        Stat("downloaded while resting", ActivityMonitor.FormatBytes(down));
-        Stat("average CPU temperature", cpu.Count > 0 ? $"{cpu.Average():0} °C" : "–");
-        Stat("average GPU temperature", gpu.Count > 0 ? $"{gpu.Average():0} °C" : "–");
-        Stat("highest temperature seen", peak is > 0 ? $"{peak:0} °C" : "–");
+        Stat("downloaded", ActivityMonitor.FormatBytes(down));
+        Stat("average CPU", cpu.Count > 0 ? $"{cpu.Average():0} °C" : "–");
+        Stat("average GPU", gpu.Count > 0 ? $"{gpu.Average():0} °C" : "–");
+        Stat("highest seen", peak is > 0 ? $"{peak:0} °C" : "–");
         p.Children.Add(grid);
 
-        p.Children.Add(SubHeading("Recent sessions"));
-        if (s.Count == 0) p.Children.Add(Hint("None yet. Press Rest to start your first one."));
+        p.Children.Add(Section("Recent sessions"));
+        if (s.Count == 0) p.Children.Add(Secondary("None yet."));
         foreach (var x in s.AsEnumerable().Reverse().Take(12))
-            p.Children.Add(Label($"{x.StartUtc.ToLocalTime():ddd d MMM, HH:mm}  ·  {(x.Minutes >= 60 ? $"{x.Minutes / 60:0.#} h" : $"{x.Minutes:0} min")}  ·  {ActivityMonitor.FormatBytes(x.Downloaded)}" +
-                                 $"{(x.AvgCpuC is double c ? $"  ·  {c:0} °C" : "")}  ·  {x.End}"));
-        var row = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
-        row.Children.Add(Small("Clear statistics", (_, _) =>
+            p.Children.Add(new Border
+            {
+                BorderBrush = ThemeManager.Brush("BorderBrush"),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(0, 8, 0, 8),
+                Child = Text($"{x.StartUtc.ToLocalTime():ddd d MMM, HH:mm}   ·   {(x.Minutes >= 60 ? $"{x.Minutes / 60:0.#} h" : $"{x.Minutes:0} min")}   ·   " +
+                             $"{ActivityMonitor.FormatBytes(x.Downloaded)}{(x.AvgCpuC is double c ? $"   ·   {c:0} °C" : "")}   ·   {x.End}"),
+            });
+        var clear = Flat("Clear statistics", (_, _) =>
         {
             if (System.Windows.MessageBox.Show(this, "Delete all statistics?", "RestMode", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
                 StatsStore.Clear();
                 Close();
             }
-        }));
-        p.Children.Add(row);
+        });
+        clear.Margin = new Thickness(0, 16, 0, 0);
+        p.Children.Add(clear);
         Body.Content = new ScrollViewer { Content = p, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Focusable = false };
     }
 }

@@ -10,18 +10,17 @@ using RestMode.Native;
 namespace RestMode.UI.Wpf;
 
 /// <summary>
-/// Base for every RestMode window: pure black, the silver filigree background
-/// (brightness from the settings), a minimal title bar (drag to move, minimise,
-/// close), Esc to close, arrow-key and game-controller navigation.
+/// Base for every RestMode window: near-black background, a thin border, a
+/// minimal title bar (drag to move, minimise, close), Esc to go back / close,
+/// arrow-key and game-controller navigation (D-pad moves, A presses, B goes back).
 /// </summary>
-internal class OrnateWindow : Window
+internal class AppWindow : Window
 {
-    private readonly System.Windows.Controls.Image _bg;
     protected readonly ContentControl Body = new();
     private readonly DispatcherTimer _pad = new() { Interval = TimeSpan.FromMilliseconds(90) };
     private ushort _lastButtons;
 
-    public OrnateWindow(string title, double width, double height, bool showTitle = true)
+    public AppWindow(string title, double width, double height, bool showTitle = true)
     {
         Title = title;
         Width = width;
@@ -29,40 +28,33 @@ internal class OrnateWindow : Window
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.CanMinimize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = Brushes.Black;
-        BorderBrush = (Brush)FindResource("SilverDimBrush");
+        Background = ThemeManager.Brush("BackgroundBrush");
+        BorderBrush = ThemeManager.Brush("BorderBrush");
         BorderThickness = new Thickness(1);
+        FontFamily = ThemeManager.Font;
+        Foreground = ThemeManager.Brush("TextBrush");
         UseLayoutRounding = true;
         TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
         try { Icon = AppIcon; } catch { /* no icon */ }
 
-        _bg = new System.Windows.Controls.Image
-        {
-            Source = new DrawingImage(Ornaments.Background()),
-            Stretch = Stretch.Fill,
-            Opacity = ThemeManager.OrnamentOpacity,
-            IsHitTestVisible = false,
-        };
-        RenderOptions.SetCachingHint(_bg, CachingHint.Cache);
-        _bg.CacheMode = new BitmapCache { RenderAtScale = 1 };
-
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRowSpan(_bg, 2);
-        root.Children.Add(_bg);
 
-        var bar = new DockPanel { Margin = new Thickness(18, 10, 10, 0), Background = Brushes.Transparent };
-        var close = GlyphButton("✕", "Close");
-        close.Click += (_, _) => Close();
-        var min = GlyphButton("–", "Minimise");
-        min.Click += (_, _) => WindowState = WindowState.Minimized;
+        var bar = new DockPanel { Margin = new Thickness(20, 10, 10, 0), Background = Brushes.Transparent, Height = 36 };
+        var close = IconButton(Icons.Close, "Close", (_, _) => Close());
+        close.IsTabStop = false;
+        var min = IconButton(Icons.Minimize, "Minimise", (_, _) => WindowState = WindowState.Minimized);
+        min.IsTabStop = false;
         DockPanel.SetDock(close, Dock.Right);
         DockPanel.SetDock(min, Dock.Right);
         bar.Children.Add(close);
         bar.Children.Add(min);
+        TopBarRight = new StackPanel { Orientation = Orientation.Horizontal };
+        DockPanel.SetDock(TopBarRight, Dock.Right);
+        bar.Children.Add(TopBarRight);
         if (showTitle)
-            bar.Children.Add(new TextBlock { Text = title, FontFamily = ThemeManager.ScriptFont, FontSize = 24, Foreground = (Brush)FindResource("HintBrush"), VerticalAlignment = VerticalAlignment.Center });
+            bar.Children.Add(new TextBlock { Text = title, Style = ThemeManager.Style("Secondary"), FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0) });
         bar.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) try { DragMove(); } catch { } };
         root.Children.Add(bar);
 
@@ -76,44 +68,19 @@ internal class OrnateWindow : Window
         {
             if (e.Key == Key.Escape) { OnBack(); e.Handled = true; }
         };
-        ThemeManager.Changed += OnTheme;
-        Closed += (_, _) => { ThemeManager.Changed -= OnTheme; _pad.Stop(); };
+        Closed += (_, _) => _pad.Stop();
         _pad.Tick += (_, _) => PollPad();
         Activated += (_, _) => _pad.Start();
         Deactivated += (_, _) => _pad.Stop();
     }
 
-    public static ImageSource AppIcon { get; } = LoadIcon();
+    /// <summary>Extra icon buttons in the title bar (left of minimise / close).</summary>
+    protected readonly StackPanel TopBarRight;
 
-    private static ImageSource LoadIcon()
-    {
-        var d = BitmapFrame.Create(new Uri("pack://application:,,,/RestMode;component/RestMode.ico"));
-        return d;
-    }
+    public static ImageSource AppIcon { get; } = BitmapFrame.Create(new Uri("pack://application:,,,/RestMode;component/RestMode.ico"));
 
     /// <summary>Esc / controller B. Default: close the window.</summary>
     protected virtual void OnBack() => Close();
-
-    private void OnTheme()
-    {
-        _bg.Opacity = ThemeManager.OrnamentOpacity;
-    }
-
-    private System.Windows.Controls.Button GlyphButton(string glyph, string tip)
-    {
-        var b = new System.Windows.Controls.Button
-        {
-            Content = glyph,
-            ToolTip = tip,
-            Style = (Style)FindResource("SmallButton"),
-            FontSize = 15,
-            Padding = new Thickness(9, 1, 9, 2),
-            Margin = new Thickness(6, 0, 0, 0),
-            IsTabStop = false,
-            Focusable = false,
-        };
-        return b;
-    }
 
     // ------------------------------------------------------------------ game controller
 
@@ -157,17 +124,24 @@ internal class OrnateWindow : Window
         }
     }
 
-    // ------------------------------------------------------------------ helpers for page building
+    // ------------------------------------------------------------------ building blocks
 
-    protected static TextBlock Heading(string t, double size = 44) => new() { Text = t, Style = ThemeManager.Style("Heading"), FontSize = size };
-    protected static TextBlock SubHeading(string t) => new() { Text = t, Style = ThemeManager.Style("SubHeading") };
-    protected static TextBlock Label(string t) => new() { Text = t, Style = ThemeManager.Style("Label") };
-    protected static TextBlock Hint(string t) => new() { Text = t, Style = ThemeManager.Style("Hint") };
+    protected static TextBlock Heading(string t, double size = 26) => new() { Text = t, Style = ThemeManager.Style("Title"), FontSize = size };
+    protected static TextBlock Section(string t) => new() { Text = t.ToUpperInvariant(), Style = ThemeManager.Style("Section") };
+    protected static TextBlock Text(string t) => new() { Text = t, Style = ThemeManager.Style("Text") };
+    protected static TextBlock Secondary(string t) => new() { Text = t, Style = ThemeManager.Style("Secondary") };
     protected static TextBlock Warn(string t) => new() { Text = t, Style = ThemeManager.Style("Warning") };
 
-    protected static System.Windows.Controls.Button Small(string text, RoutedEventHandler onClick)
+    public static System.Windows.Controls.Button Flat(string text, RoutedEventHandler onClick, string style = "FlatButton")
     {
-        var b = new System.Windows.Controls.Button { Content = text, Style = ThemeManager.Style("SmallButton"), HorizontalAlignment = HorizontalAlignment.Left };
+        var b = new System.Windows.Controls.Button { Content = text, Style = ThemeManager.Style(style) };
+        b.Click += onClick;
+        return b;
+    }
+
+    public static System.Windows.Controls.Button IconButton(Geometry icon, string tip, RoutedEventHandler onClick)
+    {
+        var b = new System.Windows.Controls.Button { Content = Icons.Make(icon, 16), ToolTip = tip, Style = ThemeManager.Style("IconButton") };
         b.Click += onClick;
         return b;
     }

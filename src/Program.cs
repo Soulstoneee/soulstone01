@@ -87,7 +87,19 @@ internal static class Program
             if (File.Exists(AppPaths.TestModeFlag))
             {
                 int i = Array.FindIndex(args, a => a.Equals("--render-ui", StringComparison.OrdinalIgnoreCase));
-                if (i >= 0 && i + 1 < args.Length) return DevTools.RenderUi(args[i + 1]);
+                if (i >= 0 && i + 1 < args.Length)
+                {
+                    // Run inside the WPF message loop, like the real app (WMI / COM calls need it).
+                    string dir = args[i + 1];
+                    app.Dispatcher.BeginInvoke(() =>
+                    {
+                        try { DevTools.RenderUi(dir); }
+                        catch (Exception ex) { Logger.Error("Render failed", ex); }
+                        finally { app.Shutdown(); }
+                    });
+                    app.Run();
+                    return 0;
+                }
                 i = Array.FindIndex(args, a => a.Equals("--render-icon", StringComparison.OrdinalIgnoreCase));
                 if (i >= 0 && i + 1 < args.Length) return DevTools.RenderIcon(args[i + 1]);
             }

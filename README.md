@@ -42,9 +42,9 @@ source (this repository) and only changes the settings listed below.
 | See what happened | Main window › **Statistics**, or tray › **View log** |
 | Put everything back right now | Tray › **Restore everything now**, or **RestMode-Reset.cmd** |
 
-The windows work with the mouse, the arrow keys (Enter to press) and a game
-controller (D-pad + A, B to go back). The tray icon is silver while awake and
-amber while resting.
+The interface is minimal and dark: one large Rest button, a clean settings list. The windows work with the mouse, the arrow keys (Enter to press) and a game
+controller (D-pad + A, B to go back). The tray icon is an outline moon while awake and
+a filled moon while resting.
 
 ## What happens when you press Rest
 
@@ -134,8 +134,7 @@ Rest animation and its texts · CPU limit, disk spin-down, battery strictness ·
 "downloads finished" threshold, minutes and end action, watched apps · fan
 method, built-in modes, Fan Control · overheat limit, battery limit, network,
 helper task · **schedule** ("Rest at" / "Wake at" every day) and apps to slow
-down · **look**: accent color (silver, gold, blue), ornament brightness,
-animation speed, sounds · export / import settings, reset to defaults,
+down · **look**: animation speed and sounds · export / import settings, reset to defaults,
 backups · about. **Statistics** shows time in Rest Mode, data downloaded and
 average temperatures.
 
@@ -212,9 +211,9 @@ You need Windows 10/11 and the free [.NET 8 SDK](https://dotnet.microsoft.com/do
 | `src/Core/ActivityMonitor.cs`, `AppWatcher.cs`, `InputWatcher.cs` | Downloads finished? / user back? |
 | `src/Core/SelfCheck.cs`, `BackupManager.cs`, `StatsStore.cs`, `NetworkWatch.cs`, `StandbyEvents.cs` | Self-check, backups, statistics, network watchdog, standby check |
 | `src/Elevation/*` | The admin helper: network adapter option, fan modes, Fan Control, the optional scheduled task |
-| `src/UI/Wpf/*` | The interface: `Theme.xaml` (all colors / fonts / styles), `Ornaments.cs` (all original vector art), windows, Rest overlay, sounds |
+| `src/UI/Wpf/*` | The interface: `Theme.xaml` (all colors / fonts / styles), `Icons.cs` (flat line icons), windows, Rest overlay, sounds |
 | `src/UI/TrayApp.cs`, `HiddenWindow.cs` | Tray icon, hotkey, Windows notifications |
 
 ## License and credits
 
-MIT License, see [LICENSE](LICENSE). Fonts: Pinyon Script and Great Vibes (Robert Leuschke / TypeSETit), Cormorant Garamond (Christian Thalmann, Catharsis Fonts) - SIL Open Font License 1.1 (`src/Assets/Fonts`). All ornaments, the emblem, the icon and the sounds are original and made for RestMode; the look is inspired by ornate fantasy-game menus but copies no game art or logos.
+MIT License, see [LICENSE](LICENSE). The interface uses Windows' own Segoe UI font; the icon and the sounds are original and made for RestMode.

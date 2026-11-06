@@ -110,8 +110,11 @@ internal static class SelfCheck
         catch { }
         try
         {
-            using var s = new System.Management.ManagementObjectSearcher("SELECT DriverVersion FROM Win32_VideoController");
-            gpu = string.Join(",", s.Get().Cast<System.Management.ManagementObject>().Select(m => m["DriverVersion"] as string ?? ""));
+            gpu = Mta.Run(() =>
+            {
+                using var s = new System.Management.ManagementObjectSearcher("SELECT DriverVersion FROM Win32_VideoController");
+                return string.Join(",", s.Get().Cast<System.Management.ManagementObject>().Select(m => m["DriverVersion"] as string ?? ""));
+            }, 8000, "");
         }
         catch { }
         return $"{os}|{bios}|{gpu}|v{typeof(SelfCheck).Assembly.GetName().Version}";

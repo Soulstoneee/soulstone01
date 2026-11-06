@@ -122,7 +122,18 @@ internal sealed class DeviceProfile
         };
     }
 
+    private static List<string>? _gpuCache;
+
+    /// <summary>Graphics cards never change while RestMode runs: read once, off the UI thread (see <see cref="Util.Mta"/>).</summary>
     private static List<string> ReadGpus()
+    {
+        if (_gpuCache != null) return _gpuCache;
+        var gpus = Util.Mta.Run(QueryGpus, 8000, (List<string>?)null);
+        if (gpus != null) _gpuCache = gpus;
+        return gpus ?? new List<string>();
+    }
+
+    private static List<string> QueryGpus()
     {
         var list = new List<string>();
         using var s = new System.Management.ManagementObjectSearcher("SELECT Name FROM Win32_VideoController");

@@ -5,18 +5,12 @@ using static RestMode.Native.NativeMethods;
 
 namespace RestMode.UI;
 
-/// <summary>
-/// Tray icons drawn at runtime from RestMode's emblem: silver while awake,
-/// warm amber while resting - like a console's rest light.
-/// </summary>
+/// <summary>Tray icons: a white line moon while awake, a filled white moon while resting.</summary>
 internal static class TrayIcons
 {
-    public static readonly System.Windows.Media.Color AwakeColor = System.Windows.Media.Color.FromRgb(0xE4, 0xE8, 0xEE);
-    public static readonly System.Windows.Media.Color RestColor = System.Windows.Media.Color.FromRgb(0xFF, 0xA9, 0x3A);
-
-    public static Icon Create(System.Windows.Media.Color color, int size = 32)
+    public static Icon Create(bool resting, int size = 32)
     {
-        var src = Wpf.Ornaments.Render(Wpf.Ornaments.Emblem(color, 3.4), size);
+        var src = Wpf.Icons.RenderMoon(size, tile: false, filled: resting);
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(src));
         using var ms = new MemoryStream();

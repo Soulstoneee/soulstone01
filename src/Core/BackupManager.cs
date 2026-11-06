@@ -42,6 +42,8 @@ internal static class BackupManager
             lines.Add($"Windows power mode: {WindowsPowerMode.Name(WindowsPowerMode.Get())} ({WindowsPowerMode.Get()})");
             File.WriteAllLines(Path.Combine(dir, "lid-buttons-power-mode.txt"), lines);
 
+            var nets = Mta.Run(() =>
+            {
             var nets = new List<string>();
             try
             {
@@ -56,6 +58,8 @@ internal static class BackupManager
                 }
             }
             catch (Exception ex) { nets.Add("could not read: " + ex.Message); }
+            return nets;
+            }, 15_000, new List<string> { "could not read (timed out)" });
             File.WriteAllLines(Path.Combine(dir, "network-adapters.txt"), nets);
 
             string? fc = FanControlSwitcher.NormalizeExe(s.FanControlExe) ?? FanControlSwitcher.Detect();

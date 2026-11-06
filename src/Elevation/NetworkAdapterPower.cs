@@ -18,7 +18,9 @@ internal static class NetworkAdapterPower
     /// ticked. 0 means nothing to change (e.g. Wi-Fi cards on Modern Standby PCs
     /// have no such option), so no UAC prompt is needed. -1 = couldn't tell.
     /// </summary>
-    public static int CountActiveNeedingChange()
+    public static int CountActiveNeedingChange() => Util.Mta.Run(CountNow, 10_000, -1);
+
+    private static int CountNow()
     {
         try
         {

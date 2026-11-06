@@ -21,8 +21,8 @@ internal sealed class TrayApp : IAppActions, IDisposable
     private readonly HiddenWindow _window = new();
     private readonly RestModeController _controller;
     private readonly NotifyIcon _tray;
-    private readonly Icon _iconAwake = TrayIcons.Create(TrayIcons.AwakeColor);
-    private readonly Icon _iconRest = TrayIcons.Create(TrayIcons.RestColor);
+    private readonly Icon _iconAwake = TrayIcons.Create(resting: false);
+    private readonly Icon _iconRest = TrayIcons.Create(resting: true);
     private readonly ToolStripMenuItem _enterItem;
     private readonly ToolStripMenuItem _statusItem;
     private readonly SingleInstance _signals = new();
@@ -162,10 +162,10 @@ internal sealed class TrayApp : IAppActions, IDisposable
         _main.Refresh();
     }
 
-    public void ShowSettings()
+    public void ShowSettings(string? page = null)
     {
         if (_settingsWindow is { IsLoaded: true }) { _settingsWindow.Activate(); return; }
-        _settingsWindow = new SettingsWindow(this);
+        _settingsWindow = new SettingsWindow(this, page);
         _settingsWindow.Closed += (_, _) => { _settingsWindow = null; _main?.Refresh(); };
         _settingsWindow.Show();
         _settingsWindow.Activate();

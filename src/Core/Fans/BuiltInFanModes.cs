@@ -52,8 +52,21 @@ internal static class BuiltInFanModes
     public static IBuiltInFanModes? Find(string? id) =>
         id == null ? null : All.FirstOrDefault(p => p.Id == id);
 
-    /// <summary>The first plug-in whose hardware is present (implemented or not), with a message for the UI/log.</summary>
-    public static (IBuiltInFanModes? provider, string message) Detect()
+    private static (IBuiltInFanModes? provider, string message)? _cache;
+
+    /// <summary>
+    /// The first plug-in whose hardware is present (implemented or not), with a message for the UI/log.
+    /// The WMI check runs off the UI thread (see <see cref="Util.Mta"/>) and is cached; <paramref name="refresh"/> checks again.
+    /// </summary>
+    public static (IBuiltInFanModes? provider, string message) Detect(bool refresh = false)
+    {
+        if (!refresh && _cache is { } c) return c;
+        var r = Util.Mta.Run(DetectNow, 10_000, ((IBuiltInFanModes?)null, "Built-in fan modes could not be checked right now."));
+        if (r.Item1 != null || !r.Item2.StartsWith("Built-in fan modes could not")) _cache = r;
+        return r;
+    }
+
+    private static (IBuiltInFanModes? provider, string message) DetectNow()
     {
         foreach (var p in All)
         {
