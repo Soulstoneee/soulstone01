@@ -626,6 +626,7 @@ internal sealed class RestModeController : IDisposable
     {
         try
         {
+            if (TestHooks.NoSleep) { Logger.Info($"[TEST] would {(hibernate ? "hibernate" : "sleep")} now (test mode: not really)."); return; }
             if (WakeTimer.Next(SettingsStore.Current.WakeAt) is DateTime wake) WakeTimer.Arm(wake);
             Logger.Info(hibernate ? "Hibernating." : "Going to sleep.");
             // Returns after the PC wakes up again.
@@ -644,6 +645,7 @@ internal sealed class RestModeController : IDisposable
 
     private void StartShutdown()
     {
+        if (TestHooks.NoSleep) { Logger.Info("[TEST] would shut down now (test mode: not really)."); return; }
         try
         {
             var psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "shutdown.exe"))
@@ -968,6 +970,11 @@ internal sealed class RestModeController : IDisposable
                 break;
             case "watchdog":
                 await WatchdogTickAsync();
+                break;
+            case "reload-settings":
+                SettingsStore.Load();
+                Logger.Info("[TEST] settings reloaded from disk.");
+                if (Current == Phase.Awake) ApplyLidSetting();
                 break;
             case "enter":
                 await EnterAsync("test");

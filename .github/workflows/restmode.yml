@@ -1,13 +1,21 @@
-# Builds RestMode.exe on Windows and uploads it as a downloadable artifact
-# (Actions tab > latest "RestMode" run > Artifacts > RestMode-win-x64).
+# Builds RestMode on Windows:
+#   RestMode.exe        portable app (one self-contained file)
+#   RestMode-Setup.exe  the same program; started under this name it shows the installer
+#   RestMode-Reset.cmd  puts every setting back even without RestMode.exe
+# Every push uploads them as an artifact (Actions tab > latest run > Artifacts).
+# Pushing a tag like v1.0.0 also creates a GitHub release with the three files.
 name: RestMode
 
 on:
   push:
     paths: ["src/**", "build.*", ".github/workflows/restmode.yml"]
+    tags: ["v*"]
   pull_request:
     paths: ["src/**", "build.*", ".github/workflows/restmode.yml"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -22,8 +30,37 @@ jobs:
       - name: Publish single-file exe
         run: dotnet publish src/RestMode.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist
 
+      - name: Installer copy and reset script
+        shell: pwsh
+        run: |
+          Copy-Item dist/RestMode.exe dist/RestMode-Setup.exe
+          & dist/RestMode.exe --write-reset-script dist
+          if (-not (Test-Path dist/RestMode-Reset.cmd)) { throw "RestMode-Reset.cmd was not written" }
+          Get-ChildItem dist | Format-Table Name, Length
+
       - uses: actions/upload-artifact@v4
         with:
           name: RestMode-win-x64
-          path: dist/RestMode.exe
+          path: |
+            dist/RestMode.exe
+            dist/RestMode-Setup.exe
+            dist/RestMode-Reset.cmd
           if-no-files-found: error
+
+      - name: GitHub release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RestMode ${{ github.ref_name }}
+          body: |
+            **RestMode ${{ github.ref_name }}** - PS4-style Rest Mode for Windows 10 / 11.
+
+            - `RestMode-Setup.exe` - installs for your user (Start menu, optional desktop shortcut and start with Windows; uninstall from Settings › Apps restores everything).
+            - `RestMode.exe` - the same app, portable: run it from any folder, nothing to install.
+            - `RestMode-Reset.cmd` - puts every setting back by hand if ever needed.
+
+            Windows SmartScreen may say the app is unrecognised because it isn't code-signed: *More info* › *Run anyway*. See the README for what RestMode changes and how to undo everything.
+          files: |
+            dist/RestMode.exe
+            dist/RestMode-Setup.exe
+            dist/RestMode-Reset.cmd

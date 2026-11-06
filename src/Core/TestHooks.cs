@@ -7,7 +7,7 @@ namespace RestMode.Core;
 /// Accepted ONLY when %LOCALAPPDATA%\RestMode\testmode.flag exists, so normal
 /// users can't trigger them by accident. Commands:
 ///   lid-close | lid-open | temp=NN | temp=off | battery=NN | battery=off |
-///   ac=on | ac=off | ac=real | drop-awake | hijack-plan | enter | wake
+///   ac=on | ac=off | ac=real | drop-awake | hijack-plan | watchdog | reload-settings | enter | wake
 /// </summary>
 internal static class TestHooks
 {
@@ -17,6 +17,9 @@ internal static class TestHooks
     public static bool? OnAc { get; private set; }
 
     public static bool Enabled => File.Exists(AppPaths.TestModeFlag);
+
+    /// <summary>Automated tests: log "would sleep / shut down" instead of doing it (a sleeping PC can't wake itself up for the next test).</summary>
+    public static bool NoSleep => Enabled && File.Exists(Path.Combine(AppPaths.DataDir, "testmode-nosleep.flag"));
 
     /// <summary>Applies value overrides; returns the command so the controller can act on events.</summary>
     public static string? ReadCommand()

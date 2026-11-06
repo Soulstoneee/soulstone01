@@ -30,6 +30,10 @@ internal static class Program
             return SingleInstance.Signal(SingleInstance.SimulateEvent) ? 0 : 1;
         }
 
+        // Build / packaging: write RestMode-Reset.cmd into a folder.
+        int wr = Array.FindIndex(args, a => a.Equals("--write-reset-script", StringComparison.OrdinalIgnoreCase));
+        if (wr >= 0 && wr + 1 < args.Length) { ResetScript.WriteTo(args[wr + 1]); return 0; }
+
         // Silent install (scripts / tests): RestMode-Setup.exe --install --quiet
         if (cmd.Install && cmd.Quiet)
             return Installer.Install() == null ? 0 : 1;
